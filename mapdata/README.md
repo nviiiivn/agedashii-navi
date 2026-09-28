@@ -119,8 +119,11 @@ labels over the route). 201/201 gate rows pass.
   Oakland at z16.0-16.5 (37.8030, -122.2712) with the switch on - 85 at
   z15.99, 55 at z17, and 69 / 91 elsewhere at z16.2. No error raised; the 48
   polygons are in the tile, byte-identical in the browser, and the raw
-  unstripped archive behaves the same. Not tested on MapLibre Native, which is
-  what the phone uses; minion 1 has the repro. Riding zoom is 16.5.
+  unstripped archive behaves the same. MapLibre NATIVE does NOT show it:
+  minion 1 tested the same spot on emulator 5556 with MapLibre Android 13.6.1
+  at tracking zoom and buildings draw (relayed by minion 2, 2026-09-28; not
+  re-run by minion 3). So this is a preview-renderer quirk - trust the preview
+  for colour and layout, not for buildings at that spot.
 - The FLET app cannot draw any of this. flet_map 0.86.5 has a raster TileLayer
   only - no vector layer, no MapLibre style. Its tile choice must not claim
   "vector" and its Buildings switch must stay hidden; the themed vector map is
