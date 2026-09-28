@@ -136,11 +136,39 @@ object Navigator {
                 rerouting = true
             }
             _nav.value = _nav.value.copy(status = status)
+            debugDir?.let {
+                Log.d(TAG, "fix %.6f,%.6f v=%s next='%s' kind=%s in=%s off=%s offRoute=%s arrived=%s left=%s band=%s say=%s".format(
+                    p.lat, p.lon, speed?.let { "%.1f".format(it) }, status.instruction, status.kind,
+                    status.turnInM?.let { "%.0f".format(it) }, status.offRouteM?.let { "%.0f".format(it) },
+                    status.offRoute, status.arrived, status.leftM?.let { "%.0f".format(it) }, status.band, status.say))
+            }
             // The Follower decides what is due; each prompt comes once - in her
             // voice where she has one, after any situation line of this fix.
             val said = cues.update(status.ok, status.offRoute, destination, rerouting, over = false, now = now)
             Voice.prompt(status, imperial, said)
         }
+    }
+
+    /**
+     * Debug builds: where the route in use is written (route.txt, one "lat,lon"
+     * per line after a header), and every fix's guidance is logged - so a
+     * simulated ride can follow the app's own route and be checked against
+     * what the banner and the voice said. Null in a build that is not debuggable.
+     */
+    @Volatile var debugDir: java.io.File? = null
+
+    private fun writeRoute(line: RouteLine, dest: LatLon, reroutes: Int) {
+        val dir = debugDir ?: return
+        runCatching {
+            dir.mkdirs()
+            val tmp = java.io.File(dir, "route.txt.tmp")
+            tmp.writeText(buildString {
+                append("# dest ${dest.lat},${dest.lon} reroutes $reroutes points ${line.points.size} metres ${line.distanceM.toInt()}\n")
+                for (m in line.maneuvers) append("# maneuver ${m.index} ${m.kind} ${m.cumM.toInt()} ${m.instruction}\n")
+                for (pt in line.points) append("${pt.lat},${pt.lon}\n")
+            })
+            tmp.renameTo(java.io.File(dir, "route.txt"))
+        }.onFailure { Log.w(TAG, "route.txt not written", it) }
     }
 
     private fun ask(from: LatLon, dest: LatLon, gen: Int, first: Boolean) {
@@ -200,6 +228,7 @@ object Navigator {
             val gap = Arrival.gap(dest, line.points.last(), endStreet)
             val status = here?.let { follower.update(it, speedMs, now) }
             Log.i(TAG, "following: ${line.maneuvers.size} turns, reroutes=$reroutes, gap=${gap?.metres?.toInt()} m")
+            writeRoute(line, dest, reroutes)
             _nav.value = Nav(dest = dest, route = line, status = status, gap = gap, reroutes = reroutes)
             // The first update of a new route can already be inside a prompt band;
             // the Follower counts it said, so it must be said here - after "start".
