@@ -122,7 +122,26 @@ object Gauges {
     /** `f"{x:.0f}"`: a whole number, ties to even as the Python rounded them. */
     fun whole(x: Double): String = Py.fixed(x, 0)
 
-    data class Horizon(val rotationDeg: Double, val shift: Double, val needleDeg: Double?, val caption: String)
+    /**
+     * Where gauges.py is WRONG, not merely different. It turned a missing reading
+     * into a measurement - `x ?: 0.0` - so an empty gauge looked exactly like a
+     * zero one: a phone with no barometer said "level", one with no accelerometer
+     * put the g dot dead centre, which reads as "perfectly balanced". An empty
+     * gauge and a zero reading must never look alike; a gauge that cannot know
+     * draws nothing (AGEDASHII's ruling, 2026-09-28). DashGoldenTest breaks the
+     * golden at exactly these parts, for a null input, and nowhere else.
+     */
+    val PYTHON_WRONG: Map<String, String> = linkedMapOf(
+        "horizon" to "gauges.py is wrong here: with no lean it drew a LEVEL horizon; we draw no horizon at all",
+        "horizon_line" to "gauges.py is wrong here: with no lean it drew the gunsight line level; we draw no line",
+        "g_ball" to "gauges.py is wrong here: a missing axis became 0 g, so the dot sat on the centre or an axis and the " +
+            "caption's total leaned on the zero; we draw no dot and a dash unless both axes are known",
+        "climb" to "gauges.py is wrong here: with no climb rate it drew the level arrow and the word \"level\"; " +
+            "we draw the resting dash and a dash for the word",
+    )
+
+    /** [rotationDeg] is null when the lean is unknown, and then nothing is drawn: see [PYTHON_WRONG]. */
+    data class Horizon(val rotationDeg: Double?, val shift: Double, val needleDeg: Double?, val caption: String)
 
     /**
      * The artificial horizon. Lean - the bike's, from speed and yaw - rotates it,
@@ -134,7 +153,10 @@ object Gauges {
      * when lean matters.
      */
     fun horizon(leanDeg: Double?, pitchDeg: Double?, rollDeg: Double?): Horizon {
-        val lean = if (leanDeg == null) 0.0 else clamp(leanDeg, -89.0, 89.0)
+        val lean = leanDeg?.let { -clamp(it, -89.0, 89.0) }
+        // Still the Python's zero for a missing pitch, beside a KNOWN lean: pitch
+        // waits on calibration, and hiding a known lean for it costs more than a
+        // band a few hundredths off centre. Only reachable before calibration.
         val pitch = if (pitchDeg == null) 0.0 else clamp(pitchDeg, -89.0, 89.0)
         val shift = clamp(pitch / PITCH_FULL_DEG, -1.0, 1.0) * 0.25
         val needle = if (rollDeg != null && leanDeg != null && abs(rollDeg - leanDeg) >= ROLL_HINT_DEG) {
@@ -142,25 +164,25 @@ object Gauges {
         } else {
             null
         }
-        return Horizon(-lean, shift, needle, "lean " + if (leanDeg == null) DASH else whole(abs(leanDeg)) + "°")
+        return Horizon(lean, shift, needle, "lean " + if (leanDeg == null) DASH else whole(abs(leanDeg)) + "°")
     }
 
-    data class GBall(val x: Double, val y: Double, val total: Double, val dot: Role, val caption: String)
+    /** [x] and [y] are null unless both axes are known, and then no dot is drawn: see [PYTHON_WRONG]. */
+    data class GBall(val x: Double?, val y: Double?, val total: Double?, val dot: Role, val caption: String)
 
     /**
      * The g-g diagram: cornering across, braking and drive up and down. Braking
      * is negative g_long and plots at the BOTTOM, where a rider feels it.
      */
     fun gBall(gLat: Double?, gLong: Double?): GBall {
-        val lat = gLat ?: 0.0
-        val long = gLong ?: 0.0
-        val total = sqrt(lat * lat + long * long)
+        if (gLat == null || gLong == null) return GBall(null, null, null, DashColours.G_DOT, DASH)
+        val total = sqrt(gLat * gLat + gLong * gLong)
         return GBall(
-            x = clamp(lat / G_FULL, -1.0, 1.0),
-            y = clamp(-long / G_FULL, -1.0, 1.0),
+            x = clamp(gLat / G_FULL, -1.0, 1.0),
+            y = clamp(-gLong / G_FULL, -1.0, 1.0),
             total = total,
             dot = if (total > 0.8) DashColours.G_DOT_HARD else DashColours.G_DOT,
-            caption = if (gLat != null || gLong != null) Py.fixed(total, 2) + " g" else DASH,
+            caption = Py.fixed(total, 2) + " g",
         )
     }
 
@@ -186,10 +208,11 @@ object Gauges {
      * flickering arrow is worse than none.
      */
     fun climb(altM: Double?, climbMps: Double?, imperial: Boolean): Climb {
-        val rate = climbMps ?: 0.0
         val (arrow, role, word) = when {
-            rate > 0.3 -> Triple(Arrow.UP, DashColours.CLIMB_UP, "climbing")
-            rate < -0.3 -> Triple(Arrow.DOWN, DashColours.CLIMB_DOWN, "descending")
+            // No rate is not level: see PYTHON_WRONG.
+            climbMps == null -> Triple(Arrow.NONE, DashColours.CLIMB_LEVEL, DASH)
+            climbMps > 0.3 -> Triple(Arrow.UP, DashColours.CLIMB_UP, "climbing")
+            climbMps < -0.3 -> Triple(Arrow.DOWN, DashColours.CLIMB_DOWN, "descending")
             else -> Triple(Arrow.LEVEL, DashColours.CLIMB_LEVEL, "level")
         }
         val height = when {
@@ -272,11 +295,12 @@ object Gauges {
         textRole = if (hint == "up") DashColours.OVER_LIMIT else Role.TEXT2,
     )
 
-    data class HorizonLine(val rotationDeg: Double, val shift: Double, val role: Role)
+    /** [rotationDeg] is null when the lean is unknown, and then no line is drawn: see [PYTHON_WRONG]. */
+    data class HorizonLine(val rotationDeg: Double?, val shift: Double, val role: Role)
 
     /** The attitude indicator reduced to its one load-bearing line. */
     fun horizonLine(leanDeg: Double?, pitchDeg: Double?): HorizonLine = HorizonLine(
-        rotationDeg = -(if (leanDeg == null) 0.0 else clamp(leanDeg, -75.0, 75.0)),
+        rotationDeg = leanDeg?.let { -clamp(it, -75.0, 75.0) },
         shift = clamp((pitchDeg ?: 0.0) / PITCH_FULL_DEG, -1.0, 1.0) * 0.35,
         role = leanRole(leanDeg),
     )

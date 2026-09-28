@@ -1,6 +1,7 @@
 package online.iamprettyfamous.navi.core.dash
 
 import online.iamprettyfamous.navi.core.Golden
+import online.iamprettyfamous.navi.core.Py
 import online.iamprettyfamous.navi.core.PyJson
 import online.iamprettyfamous.navi.core.arr
 import online.iamprettyfamous.navi.core.assertClose
@@ -18,8 +19,11 @@ import kotlinx.serialization.json.double
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlin.math.abs
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 /**
  * Every gauge against what gauges.py (md5 86eb5cf3) actually drew, taken apart by
@@ -60,12 +64,26 @@ class DashGoldenTest {
         )
     }
 
+    /** A part where the Python drew a reading from nothing: listed in [Gauges.PYTHON_WRONG], or this fails. */
+    private fun pythonWrong(part: String) = assertTrue(part in Gauges.PYTHON_WRONG, "$part broke the golden without a PYTHON_WRONG entry")
+
+    @Test
+    fun `every break from the golden says the Python is wrong, and there are no others`() {
+        assertEquals(setOf("horizon", "horizon_line", "g_ball", "climb"), Gauges.PYTHON_WRONG.keys)
+        for ((part, why) in Gauges.PYTHON_WRONG) assertTrue(why.startsWith("gauges.py is wrong here"), part)
+    }
+
     @Test
     fun `the horizon turns, rises and shows the phone as the Python's did`() {
         for (e in g.arr("horizon")) {
             val c = e.jsonObject
             val h = Gauges.horizon(c["lean"].d(), c["pitch"].d(), c["roll"].d())
-            assertClose(c.getValue("angle_deg").jsonPrimitive.double, h.rotationDeg, 1e-9, 1e-9, "$c angle")
+            if (c["lean"].d() == null) {
+                pythonWrong("horizon")
+                assertNull(h.rotationDeg, "$c: no lean, no horizon")
+            } else {
+                assertClose(c.getValue("angle_deg").jsonPrimitive.double, h.rotationDeg, 1e-9, 1e-9, "$c angle")
+            }
             assertClose(c.getValue("shift").jsonPrimitive.double, h.shift, 1e-12, 1e-12, "$c shift")
             assertClose(c["needle_deg"].d(), h.needleDeg, 1e-9, 1e-9, "$c needle")
             assertEquals(c.texts(), listOf(h.caption), "$c")
@@ -77,6 +95,13 @@ class DashGoldenTest {
         for (e in g.arr("g_ball")) {
             val c = e.jsonObject
             val b = Gauges.gBall(c["g_lat"].d(), c["g_long"].d())
+            if (c["g_lat"].d() == null || c["g_long"].d() == null) {
+                pythonWrong("g_ball")
+                assertNull(b.x, "$c: no dot")
+                assertNull(b.y, "$c: no dot")
+                assertEquals(Gauges.DASH, b.caption, "$c")
+                continue
+            }
             assertClose(c.getValue("x").jsonPrimitive.double, b.x, 1e-12, 1e-12, "$c x")
             assertClose(c.getValue("y").jsonPrimitive.double, b.y, 1e-12, 1e-12, "$c y")
             assertEquals(expected("g_dot", pyRole(c.str("colour"))), b.dot, "$c")
@@ -102,6 +127,13 @@ class DashGoldenTest {
         for (e in g.arr("climb")) {
             val c = e.jsonObject
             val k = Gauges.climb(c["alt_m"].d(), c["climb_mps"].d(), c.getValue("imperial").jsonPrimitive.boolean)
+            if (c["climb_mps"].d() == null) {
+                pythonWrong("climb")
+                assertEquals(Arrow.NONE, k.arrow, "$c: no rate is not level")
+                assertEquals(DashColours.CLIMB_LEVEL, k.role, "$c")
+                assertEquals(listOf(c.texts()[0], Gauges.DASH, "altitude"), listOf(k.height, k.detail, "altitude"), "$c")
+                continue
+            }
             val arrow = mapOf("NORTH_EAST" to Arrow.UP, "SOUTH_EAST" to Arrow.DOWN, "EAST" to Arrow.LEVEL).getValue(c.str("icon"))
             assertEquals(arrow, k.arrow, "$c")
             assertEquals(expected("climb_${arrow.name.lowercase()}", pyRole(c.str("colour"))), k.role, "$c")
@@ -184,7 +216,12 @@ class DashGoldenTest {
         for (e in g.arr("horizon_line")) {
             val c = e.jsonObject
             val h = Gauges.horizonLine(c["lean"].d(), c["pitch"].d())
-            assertClose(c.getValue("angle_deg").jsonPrimitive.double, h.rotationDeg, 1e-9, 1e-9, "$c")
+            if (c["lean"].d() == null) {
+                pythonWrong("horizon_line")
+                assertNull(h.rotationDeg, "$c: no lean, no line")
+            } else {
+                assertClose(c.getValue("angle_deg").jsonPrimitive.double, h.rotationDeg, 1e-9, 1e-9, "$c")
+            }
             assertClose(c.getValue("shift").jsonPrimitive.double, h.shift, 1e-12, 1e-12, "$c")
             assertEquals(pyRole(c.str("colour")), h.role, "$c")
         }
@@ -211,8 +248,24 @@ class DashGoldenTest {
             val hud = Hud.plan(state, layout, wide = c.getValue("wide").jsonPrimitive.boolean, anchor = Anchor.of(c.str("anchor")))
             assertEquals(c.getValue("none").jsonPrimitive.boolean, hud == null, "$c")
             // Order differs with the arrangement; what is shown must not.
-            assertEquals(c.texts().sorted(), hud?.texts().orEmpty().sorted(), "$c")
+            assertEquals(corrected(c.texts(), state, hud).sorted(), hud?.texts().orEmpty().sorted(), "$c")
         }
+    }
+
+    /** The Python's texts, corrected at exactly the [Gauges.PYTHON_WRONG] parts this state reaches, and no others. */
+    private fun corrected(python: List<String>, state: DashState, hud: Hud?): List<String> {
+        val out = python.toMutableList()
+        val items = hud?.groups.orEmpty().flatMap { it.items }
+        if (state.climbMps == null) repeat(items.count { it is ClimbItem }) {
+            pythonWrong("climb")
+            out[out.indexOf("level")] = Gauges.DASH
+        }
+        val oneAxis = listOfNotNull(state.gLat, state.gLong).singleOrNull()
+        if (oneAxis != null && (state.gLat == null || state.gLong == null)) repeat(items.count { it is GBallItem }) {
+            pythonWrong("g_ball")
+            out[out.indexOf(Py.fixed(abs(oneAxis), 2) + " g")] = Gauges.DASH
+        }
+        return out
     }
 
     private fun stateOf(o: JsonObject): DashState {

@@ -1,35 +1,28 @@
 package online.iamprettyfamous.navi.dash
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawingPadding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.github.takahirom.roborazzi.captureRoboImage
-import online.iamprettyfamous.navi.core.theme.TypeScale
-import online.iamprettyfamous.navi.ui.ButtonColumn
 import online.iamprettyfamous.navi.core.dash.Anchor
 import online.iamprettyfamous.navi.core.dash.DashState
 import online.iamprettyfamous.navi.core.dash.Hud
 import online.iamprettyfamous.navi.core.dash.Layout
 import online.iamprettyfamous.navi.core.guidance.LimitSource
 import online.iamprettyfamous.navi.core.guidance.SpeedLimit
+import online.iamprettyfamous.navi.ui.ButtonColumnLayout
+import online.iamprettyfamous.navi.ui.Chip
+import online.iamprettyfamous.navi.ui.RoundButton
 import online.iamprettyfamous.navi.ui.palette
 import online.iamprettyfamous.navi.ui.rgb
 import org.junit.Test
@@ -90,37 +83,25 @@ class DashScreenshotTest {
                     Box(Modifier.weight(1f).fillMaxHeight().background(rgb(light)))
                 }
             }
-            HudOverlay(Hud.plan(state, layout, wide, if (wide) Anchor.RIGHT else Anchor.BOTTOM), palette(theme))
-            Buttons(theme)
-        }
-    }
-
-    /**
-     * The button column as MainActivity lays it out, from the same ButtonColumn
-     * numbers, mid-ride: record with its line beside it, then four buttons. A
-     * gauge under any of these is the collision the Flet app shipped.
-     */
-    @Composable
-    private fun Buttons(theme: String) {
-        val p = palette(theme)
-        @Composable
-        fun button() = Box(
-            Modifier.size(TypeScale.TOUCH_DP.dp).background(p.surface, CircleShape).border(1.dp, p.border, CircleShape),
-        )
-        Column(
-            Modifier.safeDrawingPadding().padding(ButtonColumn.EDGE_DP.dp),
-            verticalArrangement = Arrangement.spacedBy(ButtonColumn.GAP_DP.dp),
-        ) {
-            Row(horizontalArrangement = Arrangement.spacedBy(ButtonColumn.BESIDE_DP.dp)) {
-                button()
-                BasicText(
-                    "Recording 0:12:34",
-                    Modifier.background(p.surface, RoundedCornerShape(8.dp)).border(1.dp, p.border, RoundedCornerShape(8.dp))
-                        .padding(horizontal = 14.dp, vertical = 8.dp),
-                    style = TextStyle(color = p.text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold),
-                )
+            val p = palette(theme)
+            var linesDp by remember { mutableStateOf(0) }
+            HudOverlay(Hud.plan(state, layout, wide, if (wide) Anchor.RIGHT else Anchor.BOTTOM), p, linesDp = linesDp)
+            // The real column and lines, mid-ride, with a status line up too: the
+            // worst case for the top of the screen. A gauge under any of it is the
+            // collision the Flet app shipped.
+            ButtonColumnLayout(
+                onLinesHeight = { linesDp = it },
+                lines = {
+                    Chip("● REC 12:34 · 3.2 mi · 1234 rows", p, edge = p.bad, ink = p.bad)
+                    Chip("GPS lost 12 s ago", p)
+                },
+            ) {
+                RoundButton("■", p, p.bad) {}
+                RoundButton(p.name.take(2), p) {}
+                RoundButton("Y", p) {}
+                RoundButton(layout.title.take(2), p) {}
+                RoundButton("◎", p) {}
             }
-            repeat(4) { button() }
         }
     }
 

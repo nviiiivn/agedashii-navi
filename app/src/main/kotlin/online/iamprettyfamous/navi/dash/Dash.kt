@@ -188,8 +188,10 @@ fun HorizonView(item: HorizonItem, p: Palette) {
             val s = size.width
             val c = center
             drawCircle(p.surface)
-            clipPath(Path().apply { addOval(Rect(0f, 0f, s, s)) }) {
-                rotate(h.rotationDeg.toFloat(), c) {
+            // No lean, no horizon: an empty ball, never a level one (Gauges.PYTHON_WRONG).
+            val rotation = h.rotationDeg
+            if (rotation != null) clipPath(Path().apply { addOval(Rect(0f, 0f, s, s)) }) {
+                rotate(rotation.toFloat(), c) {
                     // The band is two balls tall, so rotating never shows an edge;
                     // shift is a fraction of that band, as the Python's offset was.
                     translate(top = (h.shift * 2 * s).toFloat()) {
@@ -230,7 +232,12 @@ fun GBallView(item: GBallItem, p: Palette) {
             drawCircle(p.border, r - 0.5f, style = Stroke(1.dp.toPx()))
             drawCircle(p.border, r / 2, style = Stroke(1.dp.toPx()))
             val dot = 6.dp.toPx()
-            drawCircle(p[b.dot], dot, Offset(center.x + (b.x * (r - dot)).toFloat(), center.y + (b.y * (r - dot)).toFloat()))
+            // No g, no dot: a centred one would read as perfectly balanced (Gauges.PYTHON_WRONG).
+            val x = b.x
+            val y = b.y
+            if (x != null && y != null) {
+                drawCircle(p[b.dot], dot, Offset(center.x + (x * (r - dot)).toFloat(), center.y + (y * (r - dot)).toFloat()))
+            }
         }
         Spacer(Modifier.height(4.dp))
         Label(b.caption, p)
@@ -395,35 +402,39 @@ private fun GroupView(group: Group, p: Palette, spacing: Dp) {
  * Nothing here is tappable: the dash is read, not touched, while riding.
  */
 @Composable
-fun HudOverlay(hud: Hud?, p: Palette, modifier: Modifier = Modifier) {
+fun HudOverlay(hud: Hud?, p: Palette, modifier: Modifier = Modifier, linesDp: Int = 0) {
     if (hud == null) return
     Box(modifier.fillMaxSize().safeDrawingPadding()) {
-        for (group in hud.groups) RegionView(group, hud, p)
+        for (group in hud.groups) RegionView(group, hud, p, linesDp)
     }
 }
 
 /**
  * Extra (start, top) that keeps a group off the button column, from
  * [ButtonColumn] so it cannot drift from the buttons. Anything down the start
- * edge clears the buttons; anything at the top of it also clears the record
- * row, whose recording line stays up for the whole ride. The column is about
- * 350 dp tall: clear of the bottom of a portrait screen, but the whole height
- * of a landscape one, so the bottom corner and the strip clear it only there.
+ * edge clears the buttons and the record button; anything at the top also
+ * clears the lines beside record, [linesDp] tall as measured - the recording
+ * line stays up the whole ride and runs most of a portrait screen wide, and a
+ * status line under it comes and goes. The column is about 350 dp tall: clear
+ * of the bottom of a portrait screen, but the whole height of a landscape one,
+ * so the bottom corner and the strip clear it only there.
  */
-private fun clearance(region: Region, hud: Hud): Pair<Dp, Dp> {
+private fun clearance(region: Region, hud: Hud, linesDp: Int): Pair<Dp, Dp> {
     val beside = ButtonColumn.CLEAR_DP.dp
-    val below = ButtonColumn.BELOW_RECORD_DP.dp
+    val belowLines = ButtonColumn.belowLines(linesDp)
+    val below = maxOf(ButtonColumn.BELOW_RECORD_DP, belowLines).dp
     return when {
         region == Region.TOP_START -> beside to below
         region == Region.EDGE && (hud.anchor == Anchor.TOP || hud.anchor == Anchor.LEFT) -> beside to below
+        region == Region.TOP_END -> 0.dp to belowLines.dp
         region == Region.BOTTOM_START || region == Region.STRIP -> (if (hud.wide) beside else 0.dp) to 0.dp
         else -> 0.dp to 0.dp
     }
 }
 
 @Composable
-private fun BoxScope.RegionView(group: Group, hud: Hud, p: Palette) {
-    val (start, top) = clearance(group.region, hud)
+private fun BoxScope.RegionView(group: Group, hud: Hud, p: Palette, linesDp: Int) {
+    val (start, top) = clearance(group.region, hud, linesDp)
     when (group.region) {
         Region.STRIP -> Box(
             Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(p.bg).border(1.dp, p.border)

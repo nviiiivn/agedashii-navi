@@ -13,19 +13,8 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawingPadding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -33,13 +22,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.delay
@@ -55,8 +38,9 @@ import online.iamprettyfamous.navi.dash.HudOverlay
 import online.iamprettyfamous.navi.record.RecState
 import online.iamprettyfamous.navi.record.RideService
 import online.iamprettyfamous.navi.record.Telemetry
-import online.iamprettyfamous.navi.core.theme.TypeScale
-import online.iamprettyfamous.navi.ui.ButtonColumn
+import online.iamprettyfamous.navi.ui.ButtonColumnLayout
+import online.iamprettyfamous.navi.ui.Chip
+import online.iamprettyfamous.navi.ui.RoundButton
 import online.iamprettyfamous.navi.ui.PALETTES
 import online.iamprettyfamous.navi.ui.Palette
 import online.iamprettyfamous.navi.ui.palette
@@ -218,32 +202,31 @@ class MainActivity : ComponentActivity() {
             } else {
                 if (prefs.getString("hud_edge", "bottom") == "top") Anchor.TOP else Anchor.BOTTOM
             }
-            HudOverlay(Hud.plan(dash, hudLayout, wide, anchor), p)
+            // How tall the lines beside record are, measured: the dash moves out from under them.
+            var linesDp by remember { mutableStateOf(0) }
+            HudOverlay(Hud.plan(dash, hudLayout, wide, anchor), p, linesDp = linesDp)
 
             // Top left, one column of round buttons (spec section 03), so the
             // bottom edge belongs to the ribbon. Record first, where the spec
             // puts it under the future menu, with the recording line and the
-            // status message BESIDE it: in the column a long one pushed buttons
-            // off screen, and at its foot it fell off a landscape screen. The
-            // dash keeps clear of all of it through ButtonColumn. Theme, bike
-            // and layout are temporary until Settings exists.
-            Column(
-                Modifier.align(Alignment.TopStart).safeDrawingPadding().padding(ButtonColumn.EDGE_DP.dp),
-                verticalArrangement = Arrangement.spacedBy(ButtonColumn.GAP_DP.dp),
+            // status message BESIDE it and out of the column's flow: a line
+            // appearing never moves a button, never pushes one off screen, and
+            // the dash clears all of it through ButtonColumn. Theme, bike and
+            // layout are temporary until Settings exists.
+            ButtonColumnLayout(
+                onLinesHeight = { linesDp = it },
+                lines = {
+                    // Recording is shouted, not implied: the gauges show numbers either
+                    // way, so whether a ride is being WRITTEN is this red-edged chip
+                    // and the red square, and nothing else.
+                    recordLine(rec, nowMs)?.let { line ->
+                        if (rec.recording) Chip("● $line", p, edge = p.bad, ink = p.bad) else Chip(line, p)
+                    }
+                    message(problem, locationGranted, fixAge)?.let { Chip(it, p) }
+                },
             ) {
-                Row(horizontalArrangement = Arrangement.spacedBy(ButtonColumn.BESIDE_DP.dp)) {
-                    RoundButton(if (rec.recording) "■" else "●", p, if (rec.recording) p.bad else p.accent) {
-                        onRecordTap()
-                    }
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        // Recording is shouted, not implied: the gauges show numbers either
-                        // way, so whether a ride is being WRITTEN is this red-edged chip
-                        // and the red square, and nothing else.
-                        recordLine(rec, nowMs)?.let { line ->
-                            if (rec.recording) Chip("● $line", p, edge = p.bad, ink = p.bad) else Chip(line, p)
-                        }
-                        message(problem, locationGranted, fixAge)?.let { Chip(it, p) }
-                    }
+                RoundButton(if (rec.recording) "■" else "●", p, if (rec.recording) p.bad else p.accent) {
+                    onRecordTap()
                 }
                 RoundButton(p.name.take(2), p) {
                     val next = PALETTES[(PALETTES.indexOfFirst { it.key == theme } + 1) % PALETTES.size]
@@ -303,32 +286,6 @@ class MainActivity : ComponentActivity() {
         fixAge == null -> "Waiting for GPS"
         fixAge > STALE_FIX_S -> "GPS lost ${fixAge.toInt()} s ago"
         else -> null
-    }
-
-    @Composable
-    private fun Chip(text: String, p: Palette, edge: Color = p.border, ink: Color = p.text) {
-        BasicText(
-            text,
-            style = TextStyle(color = ink, fontSize = 16.sp, fontWeight = FontWeight.SemiBold),
-            modifier = Modifier
-                .background(p.surface, RoundedCornerShape(8.dp))
-                .border(if (edge == p.border) 1.dp else 2.dp, edge, RoundedCornerShape(8.dp))
-                .padding(horizontal = 14.dp, vertical = 8.dp),
-        )
-    }
-
-    /** 56 dp: the spec's minimum target, for gloves. */
-    @Composable
-    private fun RoundButton(label: String, p: Palette, ink: Color = p.accent, onClick: () -> Unit) {
-        Box(
-            Modifier.size(TypeScale.TOUCH_DP.dp)
-                .background(p.surface, CircleShape)
-                .border(1.dp, p.border, CircleShape)
-                .clickable(onClick = onClick),
-            contentAlignment = Alignment.Center,
-        ) {
-            BasicText(label, style = TextStyle(color = ink, fontSize = 16.sp, fontWeight = FontWeight.Bold))
-        }
     }
 
     // GPS runs while Ride is visible. Recording with the screen off is phase 3's
