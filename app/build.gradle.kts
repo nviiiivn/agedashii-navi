@@ -49,6 +49,18 @@ android {
 // MANIFEST). 217 MB, never in git. Without the property the APK carries no
 // data and the app says what is missing, as before.
 providers.gradleProperty("naviData").orNull?.let { dir ->
+    // Fail HERE, not on her phone. The app reads assets/data/MANIFEST, so the
+    // folder given must HOLD data/: pointing at data/ itself put every file one
+    // level too high, and a clean install asked her to copy the map by cable
+    // (navi-kotlin-20260928.apk, caught on emulator-5556, 2026-09-28).
+    require(file(dir).resolve("data/MANIFEST").isFile) {
+        "-PnaviData=$dir holds no data/MANIFEST: pass the folder that CONTAINS data/, not data/ itself"
+    }
+    // An APK she installs carries her built-in voice (tools/stage-voice.sh);
+    // a fresh checkout has none, because the clips are never committed.
+    require(file("src/main/assets/voice").listFiles().orEmpty().any { it.isFile }) {
+        "no built-in voice in app/src/main/assets/voice: run tools/stage-voice.sh before building her APK"
+    }
     androidComponents {
         onVariants { variant -> variant.sources.assets?.addStaticSourceDirectory(dir) }
     }
