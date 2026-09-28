@@ -34,6 +34,7 @@ import java.util.Locale
 object Voice {
     private const val TAG = "NaviVoice"
     private const val CHECK = "check:"
+    private const val MIN_CHECK_BYTES = 1024L
 
     /** After the last word: the room's echo and the mic's own buffering. */
     const val TAIL_MS = 800L
@@ -128,6 +129,8 @@ object Voice {
         }
         t.voice = candidates[i]
         _state.value = State(why = "checking the phone's voice")
+        // A file left by the last voice must not pass for this one's.
+        checkFile.delete()
         if (t.synthesizeToFile("Navi", Bundle(), checkFile, "$CHECK$i") != TextToSpeech.SUCCESS) {
             main.post { tryVoice(i + 1) }
         }
@@ -138,12 +141,16 @@ object Voice {
         main.post {
             val i = id.removePrefix(CHECK).toInt()
             val v = candidates[i]
-            if (error != null) {
-                Log.w(TAG, "${v.name} would not speak: ${errorName(error)}")
+            // "Done" is not proof either: minion 3 found voices that finish
+            // cleanly having written 0 bytes (iob, iog, iol, iom on the
+            // emulator). One word is kilobytes of audio; a bare header is 44.
+            val bytes = checkFile.length()
+            if (error != null || bytes < MIN_CHECK_BYTES) {
+                Log.w(TAG, "${v.name} would not speak: ${error?.let(::errorName) ?: "$bytes bytes of audio"}")
                 return@post tryVoice(i + 1)
             }
             _state.value = State(ready = true, why = "", voice = "${v.name} (${v.locale.toLanguageTag()}, offline)")
-            Log.i(TAG, "ready: ${v.name}")
+            Log.i(TAG, "ready: ${v.name} ($bytes bytes for one word)")
         }
     }
 
