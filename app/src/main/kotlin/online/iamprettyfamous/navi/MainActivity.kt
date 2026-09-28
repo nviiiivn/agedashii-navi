@@ -56,6 +56,8 @@ import online.iamprettyfamous.navi.dash.HudOverlay
 import online.iamprettyfamous.navi.record.RecState
 import online.iamprettyfamous.navi.record.RideService
 import online.iamprettyfamous.navi.sensors.GpsSource
+import online.iamprettyfamous.navi.core.theme.TypeScale
+import online.iamprettyfamous.navi.ui.ButtonColumn
 import online.iamprettyfamous.navi.ui.PALETTES
 import online.iamprettyfamous.navi.ui.Palette
 import online.iamprettyfamous.navi.ui.palette
@@ -224,21 +226,23 @@ class MainActivity : ComponentActivity() {
 
             // Top left, one column of round buttons (spec section 03), so the
             // bottom edge belongs to the ribbon. Record first, where the spec
-            // puts it under the future menu, with its line BESIDE it; the status
-            // message last, so a long one can never push a button off screen.
-            // Theme, bike and layout are temporary until Settings exists.
+            // puts it under the future menu, with the recording line and the
+            // status message BESIDE it: in the column a long one pushed buttons
+            // off screen, and at its foot it fell off a landscape screen. The
+            // dash keeps clear of all of it through ButtonColumn. Theme, bike
+            // and layout are temporary until Settings exists.
             Column(
-                Modifier.align(Alignment.TopStart).safeDrawingPadding().padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
+                Modifier.align(Alignment.TopStart).safeDrawingPadding().padding(ButtonColumn.EDGE_DP.dp),
+                verticalArrangement = Arrangement.spacedBy(ButtonColumn.GAP_DP.dp),
             ) {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
+                Row(horizontalArrangement = Arrangement.spacedBy(ButtonColumn.BESIDE_DP.dp)) {
                     RoundButton(if (rec.recording) "■" else "●", p, if (rec.recording) p.bad else p.accent) {
                         onRecordTap()
                     }
-                    recordLine(rec, nowMs)?.let { Chip(it, p) }
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        recordLine(rec, nowMs)?.let { Chip(it, p) }
+                        message(problem, locationGranted, fixAge)?.let { Chip(it, p) }
+                    }
                 }
                 RoundButton(p.name.take(2), p) {
                     val next = PALETTES[(PALETTES.indexOfFirst { it.key == theme } + 1) % PALETTES.size]
@@ -257,7 +261,6 @@ class MainActivity : ComponentActivity() {
                     prefs.edit().putString("hud", hudLayout.key).apply()
                 }
                 if (locationGranted && !following) RoundButton("◎", p) { map.follow() }
-                message(problem, locationGranted, fixAge)?.let { Chip(it, p) }
             }
         }
     }
@@ -317,7 +320,7 @@ class MainActivity : ComponentActivity() {
     @Composable
     private fun RoundButton(label: String, p: Palette, ink: Color = p.accent, onClick: () -> Unit) {
         Box(
-            Modifier.size(56.dp)
+            Modifier.size(TypeScale.TOUCH_DP.dp)
                 .background(p.surface, CircleShape)
                 .border(1.dp, p.border, CircleShape)
                 .clickable(onClick = onClick),

@@ -3,11 +3,12 @@ package online.iamprettyfamous.navi.dash
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowColumn
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -17,10 +18,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -64,6 +63,7 @@ import online.iamprettyfamous.navi.core.dash.SpeedBlock
 import online.iamprettyfamous.navi.core.guidance.LimitSource
 import online.iamprettyfamous.navi.core.theme.Role
 import online.iamprettyfamous.navi.core.theme.TypeScale
+import online.iamprettyfamous.navi.ui.ButtonColumn
 import online.iamprettyfamous.navi.ui.Palette
 import androidx.compose.ui.geometry.Size as Box2
 
@@ -366,14 +366,24 @@ fun ItemView(item: Item, p: Palette) = when (item) {
     is BandsItem -> BandsView(item, p)
 }
 
+/**
+ * A group wraps onto another line rather than scrolling: nothing here can be
+ * touched while riding, so a gauge scrolled off the edge is a gauge she never
+ * sees. The portrait ribbon lost gear and altitude that way, and the strip
+ * its engine bands - seen in the screenshots, with every contrast test green.
+ */
 @Composable
 private fun GroupView(group: Group, p: Palette, spacing: Dp) {
     if (group.vertical) {
-        Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(spacing)) {
+        FlowColumn(verticalArrangement = Arrangement.spacedBy(spacing), horizontalArrangement = Arrangement.spacedBy(spacing)) {
             for (item in group.items) ItemView(item, p)
         }
     } else {
-        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(spacing), verticalAlignment = Alignment.CenterVertically) {
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(spacing),
+            verticalArrangement = Arrangement.spacedBy(spacing),
+            itemVerticalAlignment = Alignment.CenterVertically,
+        ) {
             for (item in group.items) ItemView(item, p)
         }
     }
@@ -392,11 +402,32 @@ fun HudOverlay(hud: Hud?, p: Palette, modifier: Modifier = Modifier) {
     }
 }
 
+/**
+ * Extra (start, top) that keeps a group off the button column, from
+ * [ButtonColumn] so it cannot drift from the buttons. Anything down the start
+ * edge clears the buttons; anything at the top of it also clears the record
+ * row, whose recording line stays up for the whole ride. The column is about
+ * 350 dp tall: clear of the bottom of a portrait screen, but the whole height
+ * of a landscape one, so the bottom corner and the strip clear it only there.
+ */
+private fun clearance(region: Region, hud: Hud): Pair<Dp, Dp> {
+    val beside = ButtonColumn.CLEAR_DP.dp
+    val below = ButtonColumn.BELOW_RECORD_DP.dp
+    return when {
+        region == Region.TOP_START -> beside to below
+        region == Region.EDGE && (hud.anchor == Anchor.TOP || hud.anchor == Anchor.LEFT) -> beside to below
+        region == Region.BOTTOM_START || region == Region.STRIP -> (if (hud.wide) beside else 0.dp) to 0.dp
+        else -> 0.dp to 0.dp
+    }
+}
+
 @Composable
 private fun BoxScope.RegionView(group: Group, hud: Hud, p: Palette) {
+    val (start, top) = clearance(group.region, hud)
     when (group.region) {
         Region.STRIP -> Box(
-            Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(p.bg).border(1.dp, p.border).padding(10.dp),
+            Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(p.bg).border(1.dp, p.border)
+                .padding(start = 10.dp + start, top = 10.dp, end = 10.dp, bottom = 10.dp),
         ) { GroupView(group, p, 10.dp) }
         Region.CENTER -> Box(Modifier.align(Alignment.Center)) { GroupView(group, p, 4.dp) }
         else -> {
@@ -418,7 +449,8 @@ private fun BoxScope.RegionView(group: Group, hud: Hud, p: Palette) {
                 group.items.size > 1 -> 4.dp
                 else -> 0.dp
             }
-            Glass(p, Modifier.align(align).padding(horizontal = 8.dp, vertical = 10.dp), vertical = if (group.region == Region.EDGE) 8.dp else 6.dp) {
+            val margin = Modifier.align(align).padding(start = 8.dp + start, top = 10.dp + top, end = 8.dp, bottom = 10.dp)
+            Glass(p, margin, vertical = if (group.region == Region.EDGE) 8.dp else 6.dp) {
                 GroupView(group, p, spacing)
             }
         }
