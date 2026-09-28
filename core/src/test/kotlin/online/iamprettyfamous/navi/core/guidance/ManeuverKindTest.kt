@@ -12,11 +12,11 @@ import kotlin.test.assertTrue
 /** The clip keys: a contract with her recordings, and one classifier for both apps. */
 class ManeuverKindTest {
     @Test
-    fun `the eleven names are exactly the ones she was given`() {
+    fun `the names are exactly the ones she was given`() {
         assertEquals(
             listOf(
                 "turn-left", "turn-right", "slight-left", "slight-right", "sharp-left", "sharp-right",
-                "uturn", "continue", "merge", "exit", "arrive",
+                "uturn", "continue", "merge", "exit", "arrive", "roundabout",
             ),
             ManeuverKind.MANEUVERS,
         )
@@ -25,7 +25,7 @@ class ManeuverKindTest {
 
     @Test
     fun `every Valhalla maneuver type is a clip, the start, or honestly none`() {
-        val none = setOf(0, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 39, 40, 41, 42, 43)
+        val none = setOf(0, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 39, 40, 41, 42, 43)
         for (type in 0..43) {
             val kind = ManeuverKind.fromValhalla(type)
             if (type in none) assertNull(kind, "type $type has no honest clip") else {
@@ -41,6 +41,7 @@ class ManeuverKindTest {
             9 to "slight-right", 10 to "turn-right", 11 to "sharp-right", 12 to "uturn", 13 to "uturn",
             14 to "sharp-left", 15 to "turn-left", 16 to "slight-left", 4 to "arrive", 5 to "arrive", 6 to "arrive",
             8 to "continue", 20 to "exit", 21 to "exit", 25 to "merge", 37 to "merge", 38 to "merge",
+            26 to "roundabout",
         )
         for ((type, kind) in want) assertEquals(kind, ManeuverKind.fromValhalla(type), "type $type")
     }

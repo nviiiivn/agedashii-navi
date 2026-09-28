@@ -127,3 +127,19 @@ and coming back, and how loud any of it is in a helmet.
 
 Closes when: a prompt is heard on her phone over music, through whatever the
 helmet pairs to.
+
+## The two apps can name a gentle bend differently (about 12 junctions in 150)
+
+Both apps name maneuvers with Valhalla 3.6.3's own turn table (core
+ManeuverKind; 3.8.3's is identical, checked). The Flet router, which also
+speaks junctions where only the street name changes, deliberately calls 11-20
+degrees "continue", not "slight": minion 4 measured 37,771 paired junctions
+from 300 Bay Area trips, and Valhalla is silent at 138 of 150 of those, so
+"slight" would play her clip on roads that merely bend. Where Valhalla DOES
+emit a slight in 11-20 degrees (12 of 150), this app says slight and the Flet
+app says continue.
+
+ACCEPTED as is by AGEDASHII, 2026-09-28: a different word at a gentle bend
+in one narrow band is a cost carried for good. Nothing to close; a cheap
+offline cue, if minion 4 finds one, is a bonus.
+

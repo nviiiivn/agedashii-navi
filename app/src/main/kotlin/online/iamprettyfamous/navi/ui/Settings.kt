@@ -29,6 +29,7 @@ import online.iamprettyfamous.navi.core.dash.Layout
 import online.iamprettyfamous.navi.prefs.Prefs
 import online.iamprettyfamous.navi.record.Telemetry
 import online.iamprettyfamous.navi.voice.Voice
+import online.iamprettyfamous.navi.voice.VoicePanel
 
 /** A setting that changed, so the Ride screen can apply it at once. */
 enum class Changed { THEME, BIKE, BUILDINGS, NORTH_UP, KEEP_AWAKE, HUD, TELEMETRY, MIC_ON, MIC_OFF, VOICE }
@@ -96,6 +97,9 @@ fun SettingsPanel(
             Choice("Spoken turns", p, OFF_ON, onOff(prefs.voice)) {
                 prefs.voice = it == "on"; onChanged(Changed.VOICE)
             }
+
+            Heading("Your recorded voice", p)
+            VoicePanel(p, prefs, rev) { onChanged(Changed.VOICE) }
 
             Heading("Gauges", p)
             Choice("Gauges", p, OFF_ON, onOff(prefs.dash)) {

@@ -27,20 +27,29 @@ object ManeuverKind {
     const val EXIT = "exit"
     const val ARRIVE = "arrive"
 
+    /**
+     * The twelfth, added by AGEDASHII 2026-09-28: optional. If she records it,
+     * it plays; if not, the words go to the phone's voice as before - a name
+     * costs nothing and only ever improves on silence.
+     */
+    const val ROUNDABOUT = "roundabout"
+
     /** From her other clips: the route starting. Not a maneuver she is told to make. */
     const val START = "start"
 
-    /** The eleven maneuver clips, in AGEDASHII's order. */
+    /** The maneuver clips, in AGEDASHII's order: her eleven, then roundabout. */
     val MANEUVERS = listOf(
         TURN_LEFT, TURN_RIGHT, SLIGHT_LEFT, SLIGHT_RIGHT, SHARP_LEFT, SHARP_RIGHT, UTURN, CONTINUE, MERGE, EXIT, ARRIVE,
+        ROUNDABOUT,
     )
 
     /**
      * Valhalla's maneuver `type` (its turn-by-turn API reference, kNone = 0 to
      * kBuildingExit = 43) to a clip name, or null where no clip fits - then the
-     * words are spoken by TTS rather than a wrong clip played. Null for
-     * roundabouts, ferries, transit and indoor steps: none of the eleven says
-     * them honestly.
+     * words are spoken by TTS rather than a wrong clip played. Entering a
+     * roundabout (26) is [ROUNDABOUT]; leaving one (27) is null - the clip for
+     * going in would be wrong on the way out, so the words say which exit.
+     * Null for ferries, transit and indoor steps: she rides a motorcycle.
      *
      * Ramps are not exits: Valhalla keeps kExitRight/Left (20, 21, leaving a
      * highway) apart from kRampRight/Left (18, 19, often ONTO one), and an
@@ -60,6 +69,7 @@ object ManeuverKind {
         16, 19, 24 -> SLIGHT_LEFT // slight left, ramp left, stay left
         20, 21 -> EXIT
         25, 37, 38 -> MERGE
+        26 -> ROUNDABOUT
         else -> null
     }
 
@@ -68,7 +78,16 @@ object ManeuverKind {
      * measures turn_degree - in Valhalla 3.6.3's own bands (src/baldr/turn.cc,
      * make_turn_type_lut, read from the tag 2026-09-28): 0-10 and 350-359
      * straight, 11-44 slight right, 45-135 right, 136-159 sharp right, 160-200
-     * reverse, 201-224 sharp left, 225-315 left, 316-349 slight left.
+     * reverse, 201-224 sharp left, 225-315 left, 316-349 slight left. 3.8.3
+     * (the server's) has the identical table - checked, 2026-09-28.
+     *
+     * The Flet router deviates on purpose (minion 4, agreed, AGEDASHII
+     * approved): 11-20 degrees is continue there, because it also speaks
+     * junctions where only the street name changes, and Valhalla stays silent
+     * at 138 of 150 of those - slight would fire her clip on roads that merely
+     * bend. The cost, written down rather than assumed away: at the 12 in 150
+     * where Valhalla does emit slight, this app says slight and the Flet app
+     * says continue (KNOWN.md).
      */
     fun fromTurnDegree(degrees: Int): String = when (((degrees % 360) + 360) % 360) {
         in 0..10, in 350..359 -> CONTINUE

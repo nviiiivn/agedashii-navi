@@ -103,7 +103,10 @@ class MainActivity : ComponentActivity() {
             Changed.KEEP_AWAKE -> keepAwake(settings.keepAwake)
             Changed.HUD -> { hudLayout = Layout.of(settings.hud); dashOn = settings.dash }
             Changed.TELEMETRY -> Telemetry.refreshPrefs(this)
-            Changed.VOICE -> Voice.enabled = settings.voice
+            Changed.VOICE -> {
+                Voice.enabled = settings.voice
+                Voice.streets = settings.voiceStreets
+            }
             Changed.MIC_ON -> micOn()
             Changed.MIC_OFF -> {
                 RideService.micWanted = false
@@ -321,6 +324,7 @@ class MainActivity : ComponentActivity() {
             PlacesStore.open(this)
         }
         Voice.enabled = settings.voice
+        Voice.streets = settings.voiceStreets
         Voice.start(this)
         setContent { Ride() }
         // A ride Android cut off while the app was dead is found and reported here.
