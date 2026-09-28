@@ -33,6 +33,19 @@ object DashColours {
     const val GLASS_ALPHA = 0.72f
     const val GLASS_BORDER_ALPHA = 0.5f
 
+    /**
+     * Where 0.72 is not enough: the least opacity that keeps every readout over
+     * its floor above every road and area fill that theme's shipped map paints
+     * (DashOverMapTest, in :app, reads the styles themselves). Found on a real
+     * screen, 2026-09-28: Sunlight's roads are black, its glass over one came out
+     * #b8b8b8, and the over-limit red on it was 4.24:1 - under even the 4.5
+     * floor. Day's warn and Pink's bad fell short the same way. Map labels
+     * through the glass are not counted: thin strokes, and her call.
+     */
+    private val GLASS_ALPHA_OVER: Map<String, Float> = mapOf("sunlight" to 0.92f, "day" to 0.78f, "pink" to 0.78f)
+
+    fun glassAlpha(theme: String): Float = GLASS_ALPHA_OVER[theme] ?: GLASS_ALPHA
+
     /** Sky: the one interactive colour, faint. Never an alarm, so allowed. */
     val HORIZON_SKY = Paint(Role.ACCENT, 0.22f)
 
@@ -93,7 +106,10 @@ object DashColours {
      * text2 is 3.13:1 on the glass, under the 4.5 floor, and she chose
      * (2026-09-27) to draw labels, units and dashes in `text` there: one bright
      * red, with only size separating a label from its number. text2's hex is
-     * unchanged, and graphics - the level arrow - still use it.
+     * unchanged. The level arrow, the one glyph in text2, goes through here too:
+     * over Red night's own red roads (#c6362b) under the glass it was 2.65:1,
+     * under the 3.0 graphic floor (DashOverMapTest, 2026-09-28). So text2 has
+     * no consumer left in Red night - kept in the palette, not deleted.
      */
     fun textRole(theme: String, role: Role): Role =
         if (theme == "redshift" && role == Role.TEXT2) Role.TEXT else role

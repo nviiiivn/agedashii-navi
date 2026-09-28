@@ -87,7 +87,7 @@ fun sp(size: Size): TextUnit = when (size) {
 
 private fun style(colour: Color, size: TextUnit, weight: FontWeight) = TextStyle(color = colour, fontSize = size, fontWeight = weight)
 
-/** The colour for TEXT in a role; every word and number on the dash goes through it (see DashColours.textRole). */
+/** The colour for text in a role - every word and number, and the level arrow (see DashColours.textRole). */
 private fun Palette.ink(role: Role): Color = this[DashColours.textRole(key, role)]
 
 @Composable
@@ -97,13 +97,15 @@ private fun Label(text: String, p: Palette, colour: Color = p.ink(Role.TEXT2), m
 /**
  * A translucent slab over the map. Opaque would be a band - the thing being
  * avoided - and 0.72 is where tiles read as texture behind the numbers rather
- * than detail competing with them.
+ * than detail competing with them. Denser where the map's own roads would pull
+ * a readout under its floor: DashColours.glassAlpha, proved over the shipped
+ * styles by DashOverMapTest.
  */
 @Composable
 fun Glass(p: Palette, modifier: Modifier = Modifier, vertical: Dp = 6.dp, content: @Composable () -> Unit) {
     val shape = RoundedCornerShape(12.dp)
     Box(
-        modifier.background(p.bg.copy(alpha = DashColours.GLASS_ALPHA), shape)
+        modifier.background(p.bg.copy(alpha = DashColours.glassAlpha(p.key)), shape)
             .border(1.dp, p.border.copy(alpha = DashColours.GLASS_BORDER_ALPHA), shape)
             .padding(horizontal = 10.dp, vertical = vertical),
     ) { content() }
@@ -278,7 +280,7 @@ fun ClimbView(item: ClimbItem, p: Palette, height: Dp = 92.dp) {
     Box(Modifier.height(height).background(p.surface, shape).border(1.dp, p.border, shape).padding(horizontal = 10.dp, vertical = 8.dp), contentAlignment = Alignment.CenterStart) {
         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                ArrowGlyph(k.arrow, p[k.role], 20.dp, diagonal = true)
+                ArrowGlyph(k.arrow, p.ink(k.role), 20.dp, diagonal = true)
                 Spacer(Modifier.width(6.dp))
                 BasicText(k.height, style = style(p.text, TypeScale.MID_SP.sp, FontWeight.ExtraBold), maxLines = 1)
             }

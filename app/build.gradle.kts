@@ -53,6 +53,8 @@ dependencies {
 
     // test only: none of these reach the APK.
     testImplementation(libs.junit4)
+    // Reads the shipped map styles in DashOverMapTest; already :core's, so no new version.
+    testImplementation(libs.kotlinx.serialization.json)
     testImplementation(libs.robolectric)
     testImplementation(libs.roborazzi)
     testImplementation(libs.roborazzi.compose)

@@ -10,7 +10,7 @@ import kotlin.test.assertTrue
 /**
  * "Readable in the Sunlight theme at speed", as numbers the build must clear.
  *
- * Every floating gauge sits on glass - the theme's bg at [DashColours.GLASS_ALPHA]
+ * Every floating gauge sits on glass - the theme's bg at [DashColours.glassAlpha]
  * over the map - so its real background is that glass composited over whatever
  * the map draws there. [mapFills] is the darkest and lightest area fill each
  * theme's map style can put under the glass, measured by minion 3 from the
@@ -45,7 +45,7 @@ class DashContrastTest {
     private fun worstOnGlass(theme: String, colour: Int): Double {
         val p = Themes[theme]
         val (dark, light) = mapFills.getValue(theme)
-        return listOf(dark, light).minOf { Contrast.ratio(colour, Contrast.over(p.bg, DashColours.GLASS_ALPHA, it)) }
+        return listOf(dark, light).minOf { Contrast.ratio(colour, Contrast.over(p.bg, DashColours.glassAlpha(theme), it)) }
     }
 
     @Test
@@ -93,8 +93,9 @@ class DashContrastTest {
     fun `every graphic clears three to one on the glass and on the gauge surfaces`() {
         for ((theme, p) in Themes.ALL) {
             for (role in graphicRoles) {
-                val onGlass = worstOnGlass(theme, p[role])
-                val onSurface = Contrast.ratio(p[role], p.surface)
+                val colour = p[DashColours.textRole(theme, role)]
+                val onGlass = worstOnGlass(theme, colour)
+                val onSurface = Contrast.ratio(colour, p.surface)
                 assertTrue(onGlass >= Contrast.GRAPHIC_FLOOR, "$theme $role on glass $onGlass:1")
                 assertTrue(onSurface >= Contrast.GRAPHIC_FLOOR, "$theme $role on surface $onSurface:1")
             }
