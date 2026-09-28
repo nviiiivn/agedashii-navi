@@ -18,9 +18,13 @@ import online.iamprettyfamous.navi.core.dash.Anchor
 import online.iamprettyfamous.navi.core.dash.DashState
 import online.iamprettyfamous.navi.core.dash.Hud
 import online.iamprettyfamous.navi.core.dash.Layout
+import online.iamprettyfamous.navi.core.dash.TurnBanner
+import online.iamprettyfamous.navi.core.guidance.Guidance
+import online.iamprettyfamous.navi.core.guidance.Status
 import online.iamprettyfamous.navi.core.guidance.LimitSource
 import online.iamprettyfamous.navi.core.guidance.SpeedLimit
 import online.iamprettyfamous.navi.ui.ButtonColumnLayout
+import online.iamprettyfamous.navi.ui.TopStack
 import online.iamprettyfamous.navi.ui.Chip
 import online.iamprettyfamous.navi.ui.FollowGlyph
 import online.iamprettyfamous.navi.ui.RoundButton
@@ -67,8 +71,21 @@ class DashScreenshotTest {
 
     private val layouts = Layout.entries.filter { it != Layout.OFF }
 
+    private val turn = Status(
+        ok = true, instruction = "Turn right onto 12th Street", street = "12th Street",
+        icon = Guidance.turnIcon("Turn right onto 12th Street"), turnInM = 122.0, eta = "10:42",
+    )
+
+    /** A turn over the ribbon, off-route over the corners, and no instruction over the gunsight and the column. */
+    private val banners = linkedMapOf(
+        "turn" to (Layout.RIBBON to TurnBanner.plan(turn, true)),
+        "offroute" to (Layout.CORNERS to TurnBanner.plan(turn.copy(offRoute = true, offRouteM = 45.7), true)),
+        "blank" to (Layout.GUNSIGHT to TurnBanner.plan(turn.copy(instruction = "", icon = "straight", turnInM = null, street = ""), true)),
+        "column" to (Layout.COLUMN to TurnBanner.plan(turn.copy(instruction = "Make a U-turn", icon = "u_turn"), true)),
+    )
+
     @Composable
-    private fun Scene(state: DashState, layout: Layout, theme: String, wide: Boolean) {
+    private fun Scene(state: DashState, layout: Layout, theme: String, wide: Boolean, banner: TurnBanner.Plan? = null) {
         val (dark, light) = fills.getValue(theme)
         Box(Modifier.fillMaxSize()) {
             // Portrait splits left/right so the bottom ribbon crosses both;
@@ -85,13 +102,14 @@ class DashScreenshotTest {
                 }
             }
             val p = palette(theme)
-            var linesDp by remember { mutableStateOf(0) }
-            HudOverlay(Hud.plan(state, layout, wide, if (wide) Anchor.RIGHT else Anchor.BOTTOM), p, linesDp = linesDp)
+            var topStack by remember { mutableStateOf(TopStack()) }
+            HudOverlay(Hud.plan(state, layout, wide, if (wide) Anchor.RIGHT else Anchor.BOTTOM), p, top = topStack)
             // The real column and lines, mid-ride, with a status line up too: the
             // worst case for the top of the screen. A gauge under any of it is the
             // collision the Flet app shipped.
             ButtonColumnLayout(
-                onLinesHeight = { linesDp = it },
+                onTopStack = { topStack = it },
+                banner = banner?.let { plan -> { TurnBannerView(plan, p) } },
                 lines = {
                     Chip("● REC 12:34 · 3.2 mi · 1234 rows", p, edge = p.bad, ink = p.bad)
                     Chip("GPS lost 12 s ago", p)
@@ -110,6 +128,13 @@ class DashScreenshotTest {
             for (layout in layouts) {
                 captureRoboImage("build/outputs/roborazzi/dash/$theme-$orientation-${layout.key}.png") {
                     Scene(riding, layout, theme, wide)
+                }
+            }
+            // Following a route: the banner over each kind of layout, with the lines under it.
+            for ((name, pair) in banners) {
+                val (layout, plan) = pair
+                captureRoboImage("build/outputs/roborazzi/dash/$theme-$orientation-banner-$name.png") {
+                    Scene(riding, layout, theme, wide, plan)
                 }
             }
             // Parked, no sensors: every gauge must show a dash, never a number.

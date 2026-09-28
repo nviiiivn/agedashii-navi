@@ -70,21 +70,35 @@ object ButtonColumn {
      */
     const val LINES_MAX_DP = 360
 
-    /** Where the dash may start below the lines, [linesDp] tall as measured - they are text, so never assumed. */
-    fun belowLines(linesDp: Int): Int = if (linesDp == 0) 0 else LINES_TOP_DP + linesDp + GAP_DP
 }
 
 /**
- * The column and the lines beside record, positioned in one place: MainActivity
+ * What sits beside the column at the top, as measured - it is text, so never
+ * assumed: the turn banner when a route is being followed, then the lines
+ * beside record. [bottomDp] is its lower edge from the safe top, 0 when there
+ * is nothing; [banner] says the banner is up, spanning the top to the far edge.
+ */
+data class TopStack(val bottomDp: Int = 0, val banner: Boolean = false) {
+    /** Where the dash may start below it. */
+    val clearDp: Int get() = if (bottomDp == 0) 0 else bottomDp + ButtonColumn.GAP_DP
+}
+
+/**
+ * The column and what sits beside it, positioned in one place: MainActivity
  * fills it, and so does the screenshot test, so the pictures show the real
- * layout. [buttons] must put record at [ButtonColumn.RECORD_SLOT]. The lines
- * sit OUT of the column's flow: one appearing never moves a button under a
- * glove. [onLinesHeight] reports their height in dp, because
- * the dash moves out from under them.
+ * layout. [buttons] must put record at [ButtonColumn.RECORD_SLOT].
+ *
+ * Beside the column: the turn [banner], when there is one, level with the
+ * menu and out to the far edge; then the [lines] - the recording and the
+ * status - level with record, or under the banner when it is up. None of it is
+ * in the column's flow, so nothing appearing ever moves a button under a
+ * glove; [onTopStack] reports how far down it all reaches, and the dash moves
+ * out from under it.
  */
 @Composable
 fun BoxScope.ButtonColumnLayout(
-    onLinesHeight: (Int) -> Unit,
+    onTopStack: (TopStack) -> Unit,
+    banner: (@Composable () -> Unit)? = null,
     lines: @Composable ColumnScope.() -> Unit,
     buttons: @Composable ColumnScope.() -> Unit,
 ) {
@@ -94,14 +108,19 @@ fun BoxScope.ButtonColumnLayout(
         verticalArrangement = Arrangement.spacedBy(ButtonColumn.GAP_DP.dp),
         content = buttons,
     )
+    val top = if (banner != null) ButtonColumn.EDGE_DP else ButtonColumn.LINES_TOP_DP
     Column(
         Modifier.align(Alignment.TopStart).safeDrawingPadding()
-            .padding(start = ButtonColumn.LINES_START_DP.dp, top = ButtonColumn.LINES_TOP_DP.dp, end = ButtonColumn.EDGE_DP.dp)
-            .widthIn(max = ButtonColumn.LINES_MAX_DP.dp)
-            .onSizeChanged { onLinesHeight(ceil(it.height / density.density).toInt()) },
+            .padding(start = ButtonColumn.LINES_START_DP.dp, top = top.dp, end = ButtonColumn.EDGE_DP.dp)
+            .onSizeChanged {
+                val h = ceil(it.height / density.density).toInt()
+                onTopStack(TopStack(if (h == 0) 0 else top + h, banner != null))
+            },
         verticalArrangement = Arrangement.spacedBy(4.dp),
-        content = lines,
-    )
+    ) {
+        banner?.invoke()
+        Column(Modifier.widthIn(max = ButtonColumn.LINES_MAX_DP.dp), verticalArrangement = Arrangement.spacedBy(4.dp), content = lines)
+    }
 }
 
 /**

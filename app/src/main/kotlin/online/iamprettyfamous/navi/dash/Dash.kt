@@ -64,6 +64,7 @@ import online.iamprettyfamous.navi.core.guidance.LimitSource
 import online.iamprettyfamous.navi.core.theme.Role
 import online.iamprettyfamous.navi.core.theme.TypeScale
 import online.iamprettyfamous.navi.ui.ButtonColumn
+import online.iamprettyfamous.navi.ui.TopStack
 import online.iamprettyfamous.navi.ui.Palette
 import androidx.compose.ui.geometry.Size as Box2
 
@@ -88,7 +89,7 @@ fun sp(size: Size): TextUnit = when (size) {
 private fun style(colour: Color, size: TextUnit, weight: FontWeight) = TextStyle(color = colour, fontSize = size, fontWeight = weight)
 
 /** The colour for text in a role - every word and number, and the level arrow (see DashColours.textRole). */
-private fun Palette.ink(role: Role): Color = this[DashColours.textRole(key, role)]
+internal fun Palette.ink(role: Role): Color = this[DashColours.textRole(key, role)]
 
 @Composable
 private fun Label(text: String, p: Palette, colour: Color = p.ink(Role.TEXT2), modifier: Modifier = Modifier) =
@@ -404,46 +405,49 @@ private fun GroupView(group: Group, p: Palette, spacing: Dp) {
  * Nothing here is tappable: the dash is read, not touched, while riding.
  */
 @Composable
-fun HudOverlay(hud: Hud?, p: Palette, modifier: Modifier = Modifier, linesDp: Int = 0) {
+fun HudOverlay(hud: Hud?, p: Palette, modifier: Modifier = Modifier, top: TopStack = TopStack()) {
     if (hud == null) return
     Box(modifier.fillMaxSize().safeDrawingPadding()) {
-        for (group in hud.groups) RegionView(group, hud, p, linesDp)
+        for (group in hud.groups) RegionView(group, hud, p, top)
     }
 }
 
 /**
- * Extra (start, top) that keeps a group off the button column, from
- * [ButtonColumn] so it cannot drift from the buttons. Anything down the start
- * edge clears the buttons and the record button; anything at the top also
- * clears the lines beside record, [linesDp] tall as measured - the recording
- * line stays up the whole ride and runs most of a portrait screen wide, and a
- * status line under it comes and goes. In portrait the column ends far above
- * the bottom corner and the strip; in landscape a short screen puts them level
- * with it (menu, record and follow reach ~210 dp of ~370), so there they clear
- * it too - kept even where it fits today, because the next button would not.
+ * Extra (start, top) that keeps a group off the button column and what sits
+ * beside it, all from [ButtonColumn] and the measured [TopStack], so it cannot
+ * drift from them. Anything down the start edge clears the buttons and the
+ * record button; anything at the top also clears the stack - the recording
+ * line stays up the whole ride and runs most of a portrait screen wide. With
+ * the turn banner up the stack spans the top to the far edge, so the edge
+ * columns and the centre clear it as well. In portrait the column ends far
+ * above the bottom corner and the strip; in landscape a short screen puts them
+ * level with it, so there they clear it too - kept even where it fits today,
+ * because the next button would not.
  */
-private fun clearance(region: Region, hud: Hud, linesDp: Int): Pair<Dp, Dp> {
-    val beside = ButtonColumn.CLEAR_DP.dp
-    val belowLines = ButtonColumn.belowLines(linesDp)
-    val below = maxOf(ButtonColumn.BELOW_RECORD_DP, belowLines).dp
-    return when {
-        region == Region.TOP_START -> beside to below
-        region == Region.EDGE && (hud.anchor == Anchor.TOP || hud.anchor == Anchor.LEFT) -> beside to below
-        region == Region.TOP_END -> 0.dp to belowLines.dp
-        region == Region.BOTTOM_START || region == Region.STRIP -> (if (hud.wide) beside else 0.dp) to 0.dp
-        else -> 0.dp to 0.dp
+private fun clearance(region: Region, hud: Hud, top: TopStack): Pair<Dp, Dp> {
+    val beside = ButtonColumn.CLEAR_DP
+    val belowRecord = maxOf(ButtonColumn.BELOW_RECORD_DP, top.clearDp)
+    val spanning = if (top.banner) top.clearDp else 0
+    val (start, down) = when {
+        region == Region.TOP_START -> beside to belowRecord
+        region == Region.EDGE && (hud.anchor == Anchor.TOP || hud.anchor == Anchor.LEFT) -> beside to belowRecord
+        region == Region.TOP_END -> 0 to top.clearDp
+        region == Region.EDGE || region == Region.CENTER -> 0 to spanning
+        region == Region.BOTTOM_START || region == Region.STRIP -> (if (hud.wide) beside else 0) to 0
+        else -> 0 to 0
     }
+    return start.dp to down.dp
 }
 
 @Composable
-private fun BoxScope.RegionView(group: Group, hud: Hud, p: Palette, linesDp: Int) {
-    val (start, top) = clearance(group.region, hud, linesDp)
+private fun BoxScope.RegionView(group: Group, hud: Hud, p: Palette, stack: TopStack) {
+    val (start, top) = clearance(group.region, hud, stack)
     when (group.region) {
         Region.STRIP -> Box(
             Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(p.bg).border(1.dp, p.border)
                 .padding(start = 10.dp + start, top = 10.dp, end = 10.dp, bottom = 10.dp),
         ) { GroupView(group, p, 10.dp) }
-        Region.CENTER -> Box(Modifier.align(Alignment.Center)) { GroupView(group, p, 4.dp) }
+        Region.CENTER -> Box(Modifier.align(Alignment.Center).padding(top = top)) { GroupView(group, p, 4.dp) }
         else -> {
             val align = when (group.region) {
                 Region.TOP_START -> Alignment.TopStart

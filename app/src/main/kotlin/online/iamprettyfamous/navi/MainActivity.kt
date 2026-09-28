@@ -35,6 +35,8 @@ import online.iamprettyfamous.navi.core.dash.Anchor
 import online.iamprettyfamous.navi.core.dash.Hud
 import online.iamprettyfamous.navi.core.dash.Layout
 import online.iamprettyfamous.navi.dash.HudOverlay
+import online.iamprettyfamous.navi.dash.TurnBannerView
+import online.iamprettyfamous.navi.core.dash.TurnBanner
 import online.iamprettyfamous.navi.record.RecState
 import online.iamprettyfamous.navi.record.RideService
 import online.iamprettyfamous.navi.record.Telemetry
@@ -46,6 +48,7 @@ import online.iamprettyfamous.navi.routing.Router
 import online.iamprettyfamous.navi.core.geo.LatLon
 import androidx.activity.compose.BackHandler
 import online.iamprettyfamous.navi.ui.ButtonColumnLayout
+import online.iamprettyfamous.navi.ui.TopStack
 import online.iamprettyfamous.navi.ui.Chip
 import online.iamprettyfamous.navi.ui.FollowGlyph
 import online.iamprettyfamous.navi.ui.RoundButton
@@ -282,8 +285,12 @@ class MainActivity : ComponentActivity() {
                 if (prefs.getString("hud_edge", "bottom") == "top") Anchor.TOP else Anchor.BOTTOM
             }
             // How tall the lines beside record are, measured: the dash moves out from under them.
-            var linesDp by remember { mutableStateOf(0) }
-            HudOverlay(if (dashOn) Hud.plan(dash, hudLayout, wide, anchor) else null, p, linesDp = linesDp)
+            var topStack by remember { mutableStateOf(TopStack()) }
+            HudOverlay(if (dashOn) Hud.plan(dash, hudLayout, wide, anchor) else null, p, top = topStack)
+            // The turn banner, from the Follower's Status - the one the voice will
+            // speak from. Null until minion 1's Follower publishes it; then this
+            // line is the only wiring left.
+            val banner: TurnBanner.Plan? = null
 
             // Top left, one column of round buttons (spec section 03), so the
             // bottom edge belongs to the ribbon: the menu first, record under it
@@ -292,7 +299,8 @@ class MainActivity : ComponentActivity() {
             // never moves a button, never pushes one off screen, and the dash
             // clears all of it through ButtonColumn.
             ButtonColumnLayout(
-                onLinesHeight = { linesDp = it },
+                onTopStack = { topStack = it },
+                banner = banner?.let { plan -> { TurnBannerView(plan, p) } },
                 lines = {
                     // Recording is shouted, not implied: the gauges show numbers either
                     // way, so whether a ride is being WRITTEN is this red-edged chip
