@@ -22,6 +22,7 @@ import online.iamprettyfamous.navi.core.guidance.LimitSource
 import online.iamprettyfamous.navi.core.guidance.SpeedLimit
 import online.iamprettyfamous.navi.ui.ButtonColumnLayout
 import online.iamprettyfamous.navi.ui.Chip
+import online.iamprettyfamous.navi.ui.FollowGlyph
 import online.iamprettyfamous.navi.ui.RoundButton
 import online.iamprettyfamous.navi.ui.palette
 import online.iamprettyfamous.navi.ui.rgb
@@ -100,7 +101,7 @@ class DashScreenshotTest {
                 RoundButton(p.name.take(2), p) {}
                 RoundButton("Y", p) {}
                 RoundButton(layout.title.take(2), p) {}
-                RoundButton("◎", p) {}
+                RoundButton(p, {}) { FollowGlyph(p.accent) }
             }
         }
     }

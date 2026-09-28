@@ -67,6 +67,15 @@ object DashColours {
     val SHIFT_NONE = Role.TEXT3
     val OVER_LIMIT = Role.BAD
 
+    /**
+     * The ring round every round button over the map. It was `border`, which is
+     * 1.0-1.4:1 against the map in seven themes of eight - not a weak control,
+     * an ABSENT one, found by touch alone with a gloved thumb in sun. The accent
+     * reads as a control, not as text, and clears 3:1 against the map in all
+     * eight (DashContrastTest). AGEDASHII's ruling, 2026-09-28.
+     */
+    val CONTROL_RING = Role.ACCENT
+
     /** Lean colour by angle, warmest last - the OsmAnd moto idea. */
     val LEAN_BANDS: List<Pair<Double, Role>> = listOf(0.0 to Role.TEXT, 18.0 to Role.WARN, 32.0 to Role.BAD)
 

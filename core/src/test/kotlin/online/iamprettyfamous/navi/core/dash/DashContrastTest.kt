@@ -102,6 +102,17 @@ class DashContrastTest {
     }
 
     @Test
+    fun `every round button's ring stands off the map itself`() {
+        // The buttons sit on the bare map, not on glass: the ring is their only boundary.
+        for ((theme, p) in Themes.ALL) {
+            val (dark, light) = mapFills.getValue(theme)
+            val worst = minOf(Contrast.ratio(p[DashColours.CONTROL_RING], dark), Contrast.ratio(p[DashColours.CONTROL_RING], light))
+            val floor = if (theme == "sunlight") Contrast.SUNLIGHT_TEXT_FLOOR else Contrast.GRAPHIC_FLOOR
+            assertTrue(worst >= floor, "$theme button ring is only $worst:1 against the map")
+        }
+    }
+
+    @Test
     fun `the strip's solid band and the gauge boxes clear the text floor too`() {
         val below = mutableMapOf<String, Double>()
         for ((theme, p) in Themes.ALL) {

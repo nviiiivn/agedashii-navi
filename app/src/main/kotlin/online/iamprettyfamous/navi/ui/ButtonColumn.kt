@@ -1,5 +1,6 @@
 package online.iamprettyfamous.navi.ui
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -19,12 +20,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import online.iamprettyfamous.navi.core.dash.DashColours
 import online.iamprettyfamous.navi.core.theme.TypeScale
 import kotlin.math.ceil
 
@@ -94,17 +97,38 @@ fun BoxScope.ButtonColumnLayout(
     )
 }
 
-/** 56 dp: the spec's minimum target, for gloves. */
+/**
+ * 56 dp: the spec's minimum target, for gloves. The ring is DashColours.CONTROL_RING,
+ * 2 dp: in `border` it was 1.0-1.4:1 against the map in seven themes, a button
+ * findable only by touch.
+ */
 @Composable
-fun RoundButton(label: String, p: Palette, ink: Color = p.accent, onClick: () -> Unit) {
+fun RoundButton(p: Palette, onClick: () -> Unit, content: @Composable () -> Unit) {
     Box(
         Modifier.size(TypeScale.TOUCH_DP.dp)
             .background(p.surface, CircleShape)
-            .border(1.dp, p.border, CircleShape)
+            .border(2.dp, p[DashColours.CONTROL_RING], CircleShape)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
-    ) {
-        BasicText(label, style = TextStyle(color = ink, fontSize = 16.sp, fontWeight = FontWeight.Bold))
+        content = { content() },
+    )
+}
+
+@Composable
+fun RoundButton(label: String, p: Palette, ink: Color = p.accent, onClick: () -> Unit) = RoundButton(p, onClick) {
+    BasicText(label, style = TextStyle(color = ink, fontSize = 16.sp, fontWeight = FontWeight.Bold))
+}
+
+/**
+ * Follow - "centre on me": a ring round a dot, drawn, because the ◎ character
+ * renders a few pixels wide at 16 sp, too small to find on a control.
+ */
+@Composable
+fun FollowGlyph(ink: Color) {
+    Canvas(Modifier.size(26.dp)) {
+        val stroke = 2.5.dp.toPx()
+        drawCircle(ink, radius = size.minDimension / 2 - stroke, style = Stroke(stroke))
+        drawCircle(ink, radius = 4.dp.toPx())
     }
 }
 

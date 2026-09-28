@@ -40,6 +40,7 @@ import online.iamprettyfamous.navi.record.RideService
 import online.iamprettyfamous.navi.record.Telemetry
 import online.iamprettyfamous.navi.ui.ButtonColumnLayout
 import online.iamprettyfamous.navi.ui.Chip
+import online.iamprettyfamous.navi.ui.FollowGlyph
 import online.iamprettyfamous.navi.ui.RoundButton
 import online.iamprettyfamous.navi.ui.PALETTES
 import online.iamprettyfamous.navi.ui.Palette
@@ -246,7 +247,7 @@ class MainActivity : ComponentActivity() {
                     hudLayout = shown[(shown.indexOf(hudLayout) + 1) % shown.size]
                     prefs.edit().putString("hud", hudLayout.key).apply()
                 }
-                if (locationGranted && !following) RoundButton("◎", p) { map.follow() }
+                if (locationGranted && !following) RoundButton(p, { map.follow() }) { FollowGlyph(p.accent) }
             }
         }
     }
