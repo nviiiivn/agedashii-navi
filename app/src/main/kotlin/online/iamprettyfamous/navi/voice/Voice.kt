@@ -310,13 +310,16 @@ object Voice {
     }
 
     private fun playClip(id: String, item: Item.Clip) {
-        val file = VoiceClips.clips(app)[item.name]
-        if (file == null) return fallback(id, item, "gone")
+        val source = VoiceClips.sources(app)[item.name] ?: return fallback(id, item, "gone")
         val at = step
         val mp = MediaPlayer()
         try {
             mp.setAudioAttributes(attributes)
-            mp.setDataSource(file.path)
+            when (source) {
+                is VoiceClips.Source.Imported -> mp.setDataSource(source.file.path)
+                // Straight from the APK: mp3 assets are stored uncompressed, so they open as a file descriptor.
+                is VoiceClips.Source.BuiltIn -> app.assets.openFd(source.asset).use { mp.setDataSource(it.fileDescriptor, it.startOffset, it.length) }
+            }
             mp.setOnCompletionListener { main.post { if (id == current && step == at) advance(id) } }
             mp.setOnErrorListener { _, what, extra ->
                 main.post { if (id == current && step == at) fallback(id, item, "error $what/$extra") }
@@ -325,7 +328,7 @@ object Voice {
             mp.prepare()
             mp.start()
             player = mp
-            Log.d(TAG, "$id.$at clip ${file.name}")
+            Log.d(TAG, "$id.$at clip ${item.name} (${if (source is VoiceClips.Source.Imported) "hers" else "built in"})")
         } catch (e: Exception) {
             mp.release()
             fallback(id, item, e.toString())

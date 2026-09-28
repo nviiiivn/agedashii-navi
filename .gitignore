@@ -8,3 +8,7 @@ local.properties
 mapdata/out/
 routingdata/out/
 *.pmtiles
+# Her built-in voice: staged into the APK at build time (tools/stage-voice.sh),
+# NEVER committed - her own recordings, for her own gitea at most, not GitHub.
+app/src/main/assets/voice/
+

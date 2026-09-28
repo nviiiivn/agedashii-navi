@@ -46,15 +46,17 @@ private const val CONFIRM_MS = 6000L
 
 /**
  * Her recorded voice, in Settings: what is in, Import voice, Remove voice, the
- * street-name switch, and EVERY name with where its sound comes from and a play
- * button - she cannot debug twenty files by riding around. The play button
- * plays exactly what a ride would for that name.
+ * street-name switch, and EVERY name with where its sound comes from - hers,
+ * built in, the phone's voice, or silent - and a play button: she cannot debug
+ * twenty files by riding around. The play button plays exactly what a ride
+ * would for that name.
  */
 @Composable
 fun VoicePanel(p: Palette, prefs: Prefs, rev: Int, onChanged: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var have by remember(rev) { mutableStateOf(VoiceClips.have(context)) }
+    var hers by remember(rev) { mutableStateOf(VoiceClips.imported(context).keys) }
     var said by remember { mutableStateOf("") }
     var saidRole by remember { mutableStateOf(Role.TEXT2) }
     var armedAt by remember { mutableStateOf(0L) }
@@ -62,6 +64,7 @@ fun VoicePanel(p: Palette, prefs: Prefs, rev: Int, onChanged: () -> Unit) {
 
     fun refresh(text: String, role: Role) {
         have = VoiceClips.have(context)
+        hers = VoiceClips.imported(context).keys
         said = text
         saidRole = role
         onChanged()
@@ -101,7 +104,7 @@ fun VoicePanel(p: Palette, prefs: Prefs, rev: Int, onChanged: () -> Unit) {
                 } else {
                     armedAt = 0L
                     val gone = VoiceClips.clear(context)
-                    refresh("Removed $gone file${if (gone == 1) "" else "s"}.", Role.TEXT2)
+                    refresh("Removed $gone file${if (gone == 1) "" else "s"} - the built-in voice is back.", Role.TEXT2)
                 }
             }
         }
@@ -133,10 +136,11 @@ fun VoicePanel(p: Palette, prefs: Prefs, rev: Int, onChanged: () -> Unit) {
                 Column(Modifier.weight(1f)) {
                     Line(name, p.text, TypeScale.MID_SP, bold = true)
                     Line(
-                        when (source) {
-                            VoiceLines.Source.YOURS -> "yours"
-                            VoiceLines.Source.PHONE -> "phone voice: \"${VoiceLines.standIn(name, imperial)}\""
-                            VoiceLines.Source.SILENT -> "silent - only ever your own line"
+                        when {
+                            name in hers -> "yours"
+                            source == VoiceLines.Source.YOURS -> "built in"
+                            source == VoiceLines.Source.PHONE -> "phone voice: \"${VoiceLines.standIn(name, imperial)}\""
+                            else -> "silent - only ever a recorded line"
                         },
                         p.ink(Role.TEXT2), TypeScale.SMALL_SP,
                     )
