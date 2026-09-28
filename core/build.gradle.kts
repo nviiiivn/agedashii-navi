@@ -14,6 +14,7 @@ dependencies {
 
     testImplementation(kotlin("test"))
     testImplementation(platform(libs.junit.bom))
+    testImplementation(libs.sqlite.jdbc)
     // Gradle 9 no longer supplies the JUnit Platform launcher implicitly.
     testRuntimeOnly(libs.junit.platform.launcher)
 }

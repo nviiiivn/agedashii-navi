@@ -38,7 +38,7 @@ import online.iamprettyfamous.navi.routing.Navigator
  * for the whole route, not a moment.
  */
 @Composable
-fun RouteStrip(nav: Navigator.Nav, p: Palette, imperial: Boolean, voiceWhy: String? = null) {
+fun RouteStrip(nav: Navigator.Nav, p: Palette, imperial: Boolean, voiceWhy: String? = null, destName: String? = null) {
     val route = nav.route ?: return
     val left = Guidance.distanceText(nav.status?.leftM ?: route.distanceM, imperial)
     Card(p) {
@@ -46,7 +46,7 @@ fun RouteStrip(nav: Navigator.Nav, p: Palette, imperial: Boolean, voiceWhy: Stri
             p.ink(Role.TEXT2), TypeScale.MID_SP, FontWeight.Bold)
         nav.gap?.let { gap ->
             val where = gap.street?.let { "at $it, " } ?: ""
-            Line("Route ends ${where}${Guidance.distanceText(gap.metres, imperial)} from your pin",
+            Line("Route ends ${where}${Guidance.distanceText(gap.metres, imperial)} from ${destName ?: "your pin"}",
                 p.warn, TypeScale.MID_SP, FontWeight.Bold, maxLines = 2)
         }
         if (nav.rerouteNote.isNotEmpty()) Line(nav.rerouteNote, p.warn, TypeScale.MID_SP, maxLines = 2)
@@ -70,6 +70,9 @@ fun PinBand(
     imperial: Boolean,
     onRoute: () -> Unit,
     onCancel: () -> Unit,
+    /** The place's name and "kind · town" when it came from Where to; null for a long press. */
+    name: String? = null,
+    about: String? = null,
 ) {
     val finding = nav.asking == pin
     val failed = nav.failedFor == pin
@@ -77,13 +80,13 @@ fun PinBand(
         finding && here == null -> "Waiting for GPS to start the route"
         finding -> "Finding a route…"
         failed -> "No route to that point"
-        else -> "Route to this point?"
+        else -> "Route to ${name ?: "this point"}?"
     }
     val away = here?.let { "${Guidance.distanceText(Physics.haversineM(it, pin), imperial)} away" }
     val detail = if (failed) nav.failed
-    else listOfNotNull("%.5f, %.5f".format(pin.lat, pin.lon), away).joinToString(" · ")
+    else listOfNotNull(about?.ifEmpty { null } ?: "%.5f, %.5f".format(pin.lat, pin.lon), away).joinToString(" · ")
     Card(p) {
-        Line(title, p.text, TypeScale.MID_SP, FontWeight.ExtraBold)
+        Line(title, p.text, TypeScale.MID_SP, FontWeight.ExtraBold, maxLines = 2)
         Line(detail, if (failed) p.warn else p.ink(Role.TEXT2), TypeScale.MID_SP, maxLines = 3)
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Button(if (failed) "Try again" else "Route here", p, primary = true, enabled = !finding,

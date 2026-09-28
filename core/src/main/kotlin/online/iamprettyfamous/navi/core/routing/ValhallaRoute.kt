@@ -12,7 +12,8 @@ import kotlinx.serialization.json.jsonPrimitive
 import online.iamprettyfamous.navi.core.geo.LatLon
 import online.iamprettyfamous.navi.core.geo.Maneuver
 import online.iamprettyfamous.navi.core.geo.RouteLine
-import online.iamprettyfamous.navi.core.telemetry.Physics
+import online.iamprettyfamous.navi.core.guidance.ManeuverKind
+import online.iamprettyfamous.navi.core.geo.Geo
 
 /**
  * A Valhalla /route response (its native JSON) turned into the core's RouteLine,
@@ -52,17 +53,16 @@ object ValhallaRoute {
                     at = LatLon(0.0, 0.0), // placed below, once the whole shape is known
                     index = index,
                     cumM = 0.0,
+                    // Valhalla's own classification, so the clip she hears, the
+                    // arrow and the words all come from one decision.
+                    kind = ManeuverKind.fromValhalla(m["type"]?.jsonPrimitive?.intOrNull),
                 )
             }
         }
         if (points.size < 2) return RouteLine(ok = false, source = source, reason = "the route has no shape")
-        val cum = ArrayList<Double>(points.size)
-        var total = 0.0
-        cum += 0.0
-        for (i in 1 until points.size) {
-            total += Physics.haversineM(points[i - 1], points[i])
-            cum += total
-        }
+        // The ROUTER's earth (Geo), as RouteMath measures progress along it -
+        // not the ride log's (Physics), which is 8.8 m smaller in radius.
+        val cum = Geo.cumulativeM(points)
         val placed = maneuvers.map { m ->
             val i = m.index.coerceIn(0, points.size - 1)
             m.copy(at = points[i], index = i, cumM = cum[i])

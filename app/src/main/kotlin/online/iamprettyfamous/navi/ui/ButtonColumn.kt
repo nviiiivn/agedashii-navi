@@ -158,6 +158,21 @@ fun FollowGlyph(ink: Color) {
     }
 }
 
+/** Where to - a magnifier, drawn for the same reason as [FollowGlyph]. */
+@Composable
+fun SearchGlyph(ink: Color) {
+    Canvas(Modifier.size(26.dp)) {
+        val stroke = 2.5.dp.toPx()
+        val r = size.minDimension * 0.3f
+        val c = androidx.compose.ui.geometry.Offset(size.width * 0.42f, size.height * 0.42f)
+        drawCircle(ink, radius = r, center = c, style = Stroke(stroke))
+        val k = 0.7071f * r
+        drawLine(ink, androidx.compose.ui.geometry.Offset(c.x + k, c.y + k),
+            androidx.compose.ui.geometry.Offset(size.width * 0.9f, size.height * 0.9f), stroke * 1.3f,
+            androidx.compose.ui.graphics.StrokeCap.Round)
+    }
+}
+
 /** One line beside record: the recording, or what is wrong. */
 @Composable
 fun Chip(text: String, p: Palette, edge: Color = p.border, ink: Color = p.text) {

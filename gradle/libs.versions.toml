@@ -45,6 +45,10 @@ valhalla-models-config = { module = "io.github.rallista:valhalla-models-config",
 junit-bom = { module = "org.junit:junit-bom", version.ref = "junit-bom" }
 junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher" }
 # test only
+# The places list's search is tested against the real places.sqlite through
+# JDBC (the app uses Android's SQLite). Apache-2.0; 3.53.4.0 is Maven Central's
+# release as of 2026-09-28.
+sqlite-jdbc = { module = "org.xerial:sqlite-jdbc", version = "3.53.4.0" }
 roborazzi = { module = "io.github.takahirom.roborazzi:roborazzi", version.ref = "roborazzi" }
 roborazzi-compose = { module = "io.github.takahirom.roborazzi:roborazzi-compose", version.ref = "roborazzi" }
 robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }
