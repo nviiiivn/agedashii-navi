@@ -1,0 +1,76 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Agedashii Navi map preview</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<!-- Dev preview only. The app uses MapLibre Native; this uses MapLibre GL JS
+     and pmtiles.js - a second, independent reader of the same files. -->
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@6.11.2/dist/maplibre-gl.css">
+<script src="https://unpkg.com/maplibre-gl@6.11.2/dist/maplibre-gl.js"></script>
+<script src="https://unpkg.com/pmtiles@4.5.0/dist/pmtiles.js"></script>
+<style>
+  html, body, #map { margin: 0; height: 100%; }
+  #bar { position: absolute; top: 8px; left: 8px; z-index: 2; font: 600 13px system-ui, sans-serif;
+         background: rgba(0,0,0,.7); color: #fff; padding: 6px 10px; border-radius: 4px; }
+  #bar select { font: inherit; }
+</style>
+<div id="bar"></div>
+<div id="map"></div>
+<script>
+// ?theme=night&styles=../styles&tiles=../out/bayarea.pmtiles&glyphs=../out/glyphs
+//  &lat=37.8044&lon=-122.2712&z=15&route=Broadway&ui=0
+const q = new URLSearchParams(location.search);
+const THEMES = ["night", "day", "sunlight", "redshift", "cyberpunk", "matrix", "pink", "cluster"];
+const theme = q.get("theme") || "night";
+const abs = p => new URL(p, location.href).href;
+const tiles = abs(q.get("tiles") || "../out/bayarea.pmtiles");
+const glyphs = abs(q.get("glyphs") || "../out/glyphs");
+const stylesDir = q.get("styles") || "../styles";
+const routeName = q.get("route") || "Broadway";
+
+const protocol = new pmtiles.Protocol();
+maplibregl.addProtocol("pmtiles", protocol.tile);
+
+const bar = document.getElementById("bar");
+if (q.get("ui") !== "0") {
+  bar.innerHTML = `<select id="t">${THEMES.map(t => `<option ${t === theme ? "selected" : ""}>${t}</option>`).join("")}</select>
+    <span id="info"></span>`;
+  bar.querySelector("#t").onchange = e => { q.set("theme", e.target.value); location.search = q; };
+} else bar.remove();
+
+fetch(`${stylesDir}/${theme}.json`, {cache: "no-store"}).then(r => r.json()).then(style => {
+  const src = Object.values(style.sources)[0];
+  src.url = `pmtiles://${tiles}`;
+  style.glyphs = style.glyphs.replace("{GLYPHS}", glyphs);
+  const map = new maplibregl.Map({
+    container: "map", style, attributionControl: {compact: false},
+    center: [+(q.get("lon") || -122.2712), +(q.get("lat") || 37.8044)], zoom: +(q.get("z") || 15),
+    bearing: +(q.get("bearing") || 0), maxZoom: 20,
+  });
+  window.map = map;
+  map.on("error", e => { document.title = "ERROR " + (e.error && e.error.message); console.error(e.error); });
+  map.once("idle", () => {
+    // Demo route: the real geometry of one named street, drawn the way the
+    // style's metadata tells the app to draw a route.
+    const m = style.metadata;
+    const layer = m["agedashii:schema"] === "openmaptiles" ? "transportation_name" : "roads";
+    const feats = map.querySourceFeatures("bayarea", {sourceLayer: layer})
+      .filter(f => f.properties.name === routeName && f.geometry.type.endsWith("LineString"));
+    const r = m["agedashii:route"];
+    map.addSource("route", {type: "geojson", data: {type: "FeatureCollection",
+      features: feats.map(f => ({type: "Feature", geometry: f.geometry, properties: {}}))}});
+    const w = r["line-width"];
+    const casing = JSON.parse(JSON.stringify(w));
+    for (let i = 4; i < casing.length; i += 2) casing[i] = ["+", casing[i], r["casing-extra-px"] * 2];
+    const lay = {"line-cap": "round", "line-join": "round"};
+    map.addLayer({id: "route-casing", type: "line", source: "route", layout: lay,
+                  paint: {"line-color": r["casing-color"], "line-width": casing}}, m["agedashii:route-below"]);
+    map.addLayer({id: "route", type: "line", source: "route", layout: lay,
+                  paint: {"line-color": r["line-color"], "line-width": w}}, m["agedashii:route-below"]);
+    map.once("idle", () => {
+      document.title = `READY ${theme} z${map.getZoom().toFixed(1)} route-segments ${feats.length}`;
+      const info = document.getElementById("info");
+      if (info) info.textContent = ` ${style.name} · ${m["agedashii:schema"]} · z${map.getZoom().toFixed(1)} · demo route: ${routeName}`;
+    });
+  });
+});
+</script>
