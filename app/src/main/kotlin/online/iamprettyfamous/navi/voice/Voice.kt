@@ -35,6 +35,11 @@ object Voice {
     private const val TAG = "NaviVoice"
     private const val CHECK = "check:"
     private const val MIN_CHECK_BYTES = 1024L
+    private const val CHECK_TIMEOUT_MS = 8000L
+    /** A prompt held while the voice is checked is said once it is ready, if no older than this. */
+    private const val PENDING_FRESH_MS = 5000L
+    private const val STARTING = "starting the phone's voice"
+    private const val CHECKING = "checking the phone's voice"
 
     /** After the last word: the room's echo and the mic's own buffering. */
     const val TAIL_MS = 800L
@@ -42,7 +47,7 @@ object Voice {
     data class State(
         val ready: Boolean = false,
         /** Why nothing is spoken, when nothing can be. */
-        val why: String = "starting the phone's voice",
+        val why: String = STARTING,
         /** The voice in use, for Settings' honest account. */
         val voice: String = "",
         val speaking: Boolean = false,
@@ -61,6 +66,8 @@ object Voice {
     private var current: String? = null
     private var seq = 0
     private var candidates: List<TtsVoice> = emptyList()
+    private var checking = -1
+    private var pending: Pair<String, Long>? = null
     private lateinit var checkFile: File
 
     /** Her Settings switch; the prompts are still worked out, just not said. */
@@ -81,6 +88,12 @@ object Voice {
         audio = app.getSystemService(Context.AUDIO_SERVICE) as AudioManager
         checkFile = File(app.cacheDir, "voice-check.wav")
         tts = TextToSpeech(app) { status -> main.post { onInit(status) } }
+        // An engine that never answers must not leave "starting" up forever.
+        main.postDelayed({
+            if (_state.value.why == STARTING) {
+                _state.value = State(why = "the phone's voice did not start - Settings, search \"text-to-speech\", and check an engine is chosen")
+            }
+        }, CHECK_TIMEOUT_MS)
     }
 
     private fun onInit(status: Int) {
@@ -128,18 +141,30 @@ object Voice {
             return
         }
         t.voice = candidates[i]
-        _state.value = State(why = "checking the phone's voice")
+        checking = i
+        _state.value = State(why = CHECKING)
         // A file left by the last voice must not pass for this one's.
         checkFile.delete()
         if (t.synthesizeToFile("Navi", Bundle(), checkFile, "$CHECK$i") != TextToSpeech.SUCCESS) {
             main.post { tryVoice(i + 1) }
+            return
         }
+        // A voice that never calls back is a voice that does not speak.
+        main.postDelayed({
+            if (checking == i) {
+                Log.w(TAG, "${candidates[i].name} would not speak: no answer in $CHECK_TIMEOUT_MS ms")
+                tryVoice(i + 1)
+            }
+        }, CHECK_TIMEOUT_MS)
     }
 
     private fun ended(id: String, error: Int?) {
         if (!id.startsWith(CHECK)) return finished(id, if (error == null) "done" else "error $error", error)
         main.post {
             val i = id.removePrefix(CHECK).toInt()
+            // Late: already timed out and moved on.
+            if (i != checking) return@post
+            checking = -1
             val v = candidates[i]
             // "Done" is not proof either: minion 3 found voices that finish
             // cleanly having written 0 bytes (iob, iog, iol, iom on the
@@ -151,6 +176,11 @@ object Voice {
             }
             _state.value = State(ready = true, why = "", voice = "${v.name} (${v.locale.toLanguageTag()}, offline)")
             Log.i(TAG, "ready: ${v.name} ($bytes bytes for one word)")
+            // A prompt that came while the voice was being checked: the Follower
+            // has already counted it said, so it is said now - if still fresh.
+            val waiting = pending
+            pending = null
+            if (waiting != null && SystemClock.elapsedRealtime() - waiting.second < PENDING_FRESH_MS) say(waiting.first)
         }
     }
 
@@ -187,7 +217,9 @@ object Voice {
         main.post {
             val t = tts
             if (!enabled || t == null || !_state.value.ready) {
-                Log.i(TAG, "not said (${if (!enabled) "voice off" else _state.value.why}): $text")
+                val why = _state.value.why
+                if (enabled && (why == STARTING || why == CHECKING)) pending = text to SystemClock.elapsedRealtime()
+                Log.i(TAG, "not said yet (${if (!enabled) "voice off" else why}): $text")
                 return@post
             }
             val id = "p${++seq}"
