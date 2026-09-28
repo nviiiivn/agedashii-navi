@@ -25,6 +25,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import online.iamprettyfamous.navi.core.bikes.Bikes
+import online.iamprettyfamous.navi.core.dash.DashColours
 import online.iamprettyfamous.navi.core.dash.Layout
 import online.iamprettyfamous.navi.prefs.Prefs
 import online.iamprettyfamous.navi.record.Telemetry
@@ -232,7 +233,9 @@ private fun Choice(label: String, p: Palette, options: List<Pair<String, String>
                 Box(
                     Modifier.heightIn(min = 56.dp)
                         .background(if (on) p.accent else p.surface, RoundedCornerShape(10.dp))
-                        .border(if (on) 2.dp else 1.dp, if (on) p.accent else p.border, RoundedCornerShape(10.dp))
+                        // Unchosen, a hairline on the surface was a near-invisible
+                        // edge in the dark themes (minion 2); the round buttons' ring is 3:1+.
+                        .border(2.dp, if (on) p.accent else p[DashColours.CONTROL_RING], RoundedCornerShape(10.dp))
                         .clickable { if (!on) pick(key) }
                         .padding(horizontal = 18.dp),
                     contentAlignment = Alignment.Center,
