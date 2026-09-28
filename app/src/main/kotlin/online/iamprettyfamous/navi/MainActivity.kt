@@ -287,9 +287,10 @@ class MainActivity : ComponentActivity() {
             // How tall the lines beside record are, measured: the dash moves out from under them.
             var topStack by remember { mutableStateOf(TopStack()) }
             HudOverlay(if (dashOn) Hud.plan(dash, hudLayout, wide, anchor) else null, p, top = topStack)
-            // The turn banner, from the Follower's Status - the one the voice will
-            // speak from. Null until minion 1's Follower publishes it; then this
-            // line is the only wiring left.
+            // The turn banner, from the Follower's Status - the same turn the voice
+            // announces, in the banner's own words (the voice's are hers). Null
+            // until minion 1's Follower publishes it; then this line is the only
+            // wiring left.
             val banner: TurnBanner.Plan? = null
 
             // Top left, one column of round buttons (spec section 03), so the

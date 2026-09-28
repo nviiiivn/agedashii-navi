@@ -6,8 +6,11 @@ import online.iamprettyfamous.navi.core.theme.Role
 
 /**
  * The turn banner: the instruction, the distance to it, and off-route - the
- * thing she reads at 60 mph. Planned from the Follower's [Status], the same one
- * the voice speaks from, so what she hears and what she reads cannot disagree.
+ * thing she reads at 60 mph. Planned from the Follower's [Status], the same
+ * maneuver and timing the voice uses, so the two never disagree about WHICH
+ * turn - but not the same WORDS: the voice is her own recorded character lines
+ * ("GO LEFT IF YOU WANT TO LIVE"), platform TTS beneath, and diverges from this
+ * text on purpose. Nothing here may assume the banner says what is spoken.
  * ride.py's turn_band, with its two inventions removed ([PYTHON_WRONG]).
  *
  * A solid band on the theme's surface, never glass: what the map paints under
