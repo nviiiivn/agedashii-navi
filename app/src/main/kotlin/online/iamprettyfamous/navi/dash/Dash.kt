@@ -62,6 +62,7 @@ import online.iamprettyfamous.navi.core.dash.RpmItem
 import online.iamprettyfamous.navi.core.dash.Size
 import online.iamprettyfamous.navi.core.dash.SpeedBlock
 import online.iamprettyfamous.navi.core.guidance.LimitSource
+import online.iamprettyfamous.navi.core.theme.Role
 import online.iamprettyfamous.navi.core.theme.TypeScale
 import online.iamprettyfamous.navi.ui.Palette
 import androidx.compose.ui.geometry.Size as Box2
@@ -86,8 +87,11 @@ fun sp(size: Size): TextUnit = when (size) {
 
 private fun style(colour: Color, size: TextUnit, weight: FontWeight) = TextStyle(color = colour, fontSize = size, fontWeight = weight)
 
+/** The colour for TEXT in a role; every word and number on the dash goes through it (see DashColours.textRole). */
+private fun Palette.ink(role: Role): Color = this[DashColours.textRole(key, role)]
+
 @Composable
-private fun Label(text: String, p: Palette, colour: Color = p.text2, modifier: Modifier = Modifier) =
+private fun Label(text: String, p: Palette, colour: Color = p.ink(Role.TEXT2), modifier: Modifier = Modifier) =
     BasicText(text, modifier, style(colour, TypeScale.SMALL_SP.sp, FontWeight.SemiBold), maxLines = 1)
 
 /**
@@ -109,10 +113,10 @@ fun Glass(p: Palette, modifier: Modifier = Modifier, vertical: Dp = 6.dp, conten
 @Composable
 fun NumView(n: Num, p: Palette) {
     Row(verticalAlignment = Alignment.Bottom) {
-        BasicText(n.value, Modifier.alignByBaseline(), style(p[n.role], sp(n.size), FontWeight.Black), maxLines = 1)
+        BasicText(n.value, Modifier.alignByBaseline(), style(p.ink(n.role), sp(n.size), FontWeight.Black), maxLines = 1)
         if (n.unit.isNotEmpty()) {
             Spacer(Modifier.width(3.dp))
-            BasicText(n.unit, Modifier.alignByBaseline(), style(p.text2, TypeScale.SMALL_SP.sp, FontWeight.Bold), maxLines = 1)
+            BasicText(n.unit, Modifier.alignByBaseline(), style(p.ink(Role.TEXT2), TypeScale.SMALL_SP.sp, FontWeight.Bold), maxLines = 1)
         }
     }
 }
@@ -303,7 +307,7 @@ fun BandsView(item: BandsItem, p: Palette, height: Dp = 92.dp) {
 fun GearView(item: GearItem, p: Palette) {
     val g = item.badge
     Row(verticalAlignment = Alignment.CenterVertically) {
-        BasicText(g.text, style = style(p[g.textRole], sp(item.size), FontWeight.Black), maxLines = 1)
+        BasicText(g.text, style = style(p.ink(g.textRole), sp(item.size), FontWeight.Black), maxLines = 1)
         Spacer(Modifier.width(4.dp))
         ArrowGlyph(g.arrow, p[g.arrowRole], (sp(item.size).value * 0.55f).dp)
     }
@@ -344,7 +348,7 @@ fun RpmView(item: RpmItem, p: Palette) {
                 drawRect(Brush.horizontalGradient(DashColours.REV_ZONES.map { p[it] }, startX = 0f, endX = w), size = Box2(w, size.height))
             }
         }
-        Label(r.text, p, p[r.textRole])
+        Label(r.text, p, p.ink(r.textRole))
     }
 }
 

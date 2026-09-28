@@ -78,6 +78,16 @@ object DashColours {
         "climb_down" to mapOf(Role.WARN to CLIMB_DOWN),
         "g_long" to mapOf(Role.GOOD to DRIVE),
     )
+
+    /**
+     * The role TEXT is drawn in, given the role the gauge asks for. Red night's
+     * text2 is 3.13:1 on the glass, under the 4.5 floor, and she chose
+     * (2026-09-27) to draw labels, units and dashes in `text` there: one bright
+     * red, with only size separating a label from its number. text2's hex is
+     * unchanged, and graphics - the level arrow - still use it.
+     */
+    fun textRole(theme: String, role: Role): Role =
+        if (theme == "redshift" && role == Role.TEXT2) Role.TEXT else role
 }
 
 /**

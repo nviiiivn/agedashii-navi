@@ -29,18 +29,18 @@ class DashContrastTest {
         "cluster" to (0x080604 to 0x2c1f08),
     )
 
-    /** Roles the dash draws AS TEXT: numbers, units and labels, lean warming, over-limit and shift. */
+    /**
+     * Roles the gauges ask for AS TEXT: numbers, units and labels, lean warming,
+     * over-limit and shift. Each is checked as the colour actually drawn, through
+     * [DashColours.textRole].
+     */
     private val textRoles = listOf(Role.TEXT, Role.TEXT2, Role.WARN, Role.BAD)
 
-    /** Roles the dash draws as graphics: bars, dots, arrows, the rev gradient. */
-    private val graphicRoles = listOf(Role.ACCENT, Role.WARN, Role.BAD, Role.GOOD, Role.TEXT)
+    /** Roles the dash draws as graphics: bars, dots, arrows (the level arrow is TEXT2), the rev gradient. */
+    private val graphicRoles = listOf(Role.ACCENT, Role.WARN, Role.BAD, Role.GOOD, Role.TEXT, Role.TEXT2)
 
-    /**
-     * Below the floor on purpose, pending her decision - never silently. Red night's
-     * text2 is a dim red for dark-adapted eyes and sits below 4.5 even on its own
-     * solid black (3.27), so it is the palette, not the glass. Reported 2026-09-27.
-     */
-    private val knownBelow = setOf("redshift text2")
+    /** The colour a text role is drawn in, in that theme. */
+    private fun ink(theme: String, role: Role): Int = Themes[theme][DashColours.textRole(theme, role)]
 
     private fun worstOnGlass(theme: String, colour: Int): Double {
         val p = Themes[theme]
@@ -58,14 +58,26 @@ class DashContrastTest {
 
     @Test
     fun `every readout clears the text floor on the glass over her real map`() {
+        // No exceptions: the next drop below a floor is a regression, and fails the build.
         val below = mutableMapOf<String, Double>()
-        for ((theme, p) in Themes.ALL) {
+        for (theme in Themes.ALL.keys) {
             for (role in textRoles) {
-                val worst = worstOnGlass(theme, p[role])
+                val worst = worstOnGlass(theme, ink(theme, role))
                 if (worst < Contrast.textFloor(theme)) below["$theme ${role.name.lowercase()}"] = worst
             }
         }
-        assertEquals(knownBelow, below.keys, "below the text floor on glass: $below")
+        assertEquals(emptyMap<String, Double>(), below, "below the text floor on glass")
+    }
+
+    @Test
+    fun `red night draws its words in one red, and keeps text2's hex`() {
+        // Her choice, 2026-09-27: labels and units in `text`, only size separating
+        // them from the numbers. The palette itself is not redefined.
+        assertEquals(Role.TEXT, DashColours.textRole("redshift", Role.TEXT2))
+        assertEquals(0xb32a22, Themes["redshift"].text2)
+        for (theme in Themes.ALL.keys - "redshift") {
+            for (role in Role.entries) assertEquals(role, DashColours.textRole(theme, role), "$theme $role")
+        }
     }
 
     @Test
@@ -94,10 +106,11 @@ class DashContrastTest {
         val below = mutableMapOf<String, Double>()
         for ((theme, p) in Themes.ALL) {
             for (role in textRoles) {
-                val worst = minOf(Contrast.ratio(p[role], p.bg), Contrast.ratio(p[role], p.surface))
+                val colour = ink(theme, role)
+                val worst = minOf(Contrast.ratio(colour, p.bg), Contrast.ratio(colour, p.surface))
                 if (worst < Contrast.textFloor(theme)) below["$theme ${role.name.lowercase()}"] = worst
             }
         }
-        assertEquals(knownBelow, below.keys, "below the text floor on solid: $below")
+        assertEquals(emptyMap<String, Double>(), below, "below the text floor on solid")
     }
 }
