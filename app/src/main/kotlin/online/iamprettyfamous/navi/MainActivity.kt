@@ -58,6 +58,9 @@ import online.iamprettyfamous.navi.ui.Palette
 import online.iamprettyfamous.navi.ui.palette
 import online.iamprettyfamous.navi.routing.Navigator
 import online.iamprettyfamous.navi.voice.Voice
+import online.iamprettyfamous.navi.places.PlacesStore
+import online.iamprettyfamous.navi.ui.SearchGlyph
+import online.iamprettyfamous.navi.ui.WhereToPanel
 import online.iamprettyfamous.navi.ui.PinBand
 import online.iamprettyfamous.navi.ui.RouteStrip
 import androidx.compose.foundation.layout.Arrangement
@@ -165,6 +168,26 @@ class MainActivity : ComponentActivity() {
     /** The point she long-pressed, offered as a destination and not chosen yet. */
     private var pin by mutableStateOf<LatLon?>(null)
 
+    /** The offered point's name and "kind · town", when it came from Where to. */
+    private var pinName by mutableStateOf<String?>(null)
+    private var pinAbout by mutableStateOf<String?>(null)
+
+    /** The destination's name, for arrival and the "route ends" line. */
+    private var destName by mutableStateOf<String?>(null)
+
+    private var whereToOpen by mutableStateOf(false)
+
+    private fun offer(at: LatLon, name: String?, about: String?) {
+        pin = at
+        pinName = name
+        pinAbout = about
+    }
+
+    private fun routeToPin(at: LatLon) {
+        destName = pinName
+        Navigator.go(at, settings.imperial)
+    }
+
     /** The same two-tap guard for ending a route. */
     private var endArmedAt by mutableStateOf<Long?>(null)
 
@@ -173,6 +196,7 @@ class MainActivity : ComponentActivity() {
         val now = SystemClock.elapsedRealtime()
         if (armed != null && now - armed < STOP_CONFIRM_MS) {
             endArmedAt = null
+            destName = null
             Navigator.clear()
         } else {
             endArmedAt = now
@@ -182,6 +206,8 @@ class MainActivity : ComponentActivity() {
     private fun cancelPin() {
         pin?.let(Navigator::forget)
         pin = null
+        pinName = null
+        pinAbout = null
     }
 
     private fun onRecordTap() {
@@ -234,11 +260,16 @@ class MainActivity : ComponentActivity() {
         for (key in listOf("pin", "routeto")) intent?.getStringExtra(key)?.let { spec ->
             runCatching {
                 val (lat, lon) = spec.split(",").map(String::toDouble)
-                pin = LatLon(lat, lon)
-                if (key == "routeto") Navigator.go(LatLon(lat, lon), settings.imperial)
+                offer(LatLon(lat, lon), null, null)
+                if (key == "routeto") routeToPin(LatLon(lat, lon))
             }.onFailure { Log.w("NaviGuide", "bad $key extra '$spec': ${it.message}") }
         }
         if (intent?.getBooleanExtra("endroute", false) == true) Navigator.clear()
+        // Debug: search the places list as if typed into Where to.
+        intent?.getStringExtra("search")?.let { q ->
+            whereToOpen = true
+            PlacesStore.search(q, Telemetry.fix.value?.let { LatLon(it.latitude, it.longitude) })
+        }
         intent?.getStringExtra("say")?.let { Voice.say(it) }
         if (intent?.hasExtra("mic") == true) {
             applySetting(if (intent.getBooleanExtra("mic", false)) Changed.MIC_ON else Changed.MIC_OFF)
@@ -269,7 +300,7 @@ class MainActivity : ComponentActivity() {
         map = RideMapController(this)
         map.onFollowingChanged = { following = it }
         map.onProblem = { problem = it }
-        map.onLongPress = { pin = it }
+        map.onLongPress = { offer(it, null, null) }
         map.onCreate(savedInstanceState, theme, bike, prefs.getBoolean("north_up", false))
         // Buildings: off unless she turns them on (Settings, when it exists).
         map.setBuildings(prefs.getBoolean("buildings", false))
@@ -280,6 +311,7 @@ class MainActivity : ComponentActivity() {
         if (locationGranted) map.enableLocation() else askLocation.launch(FINE_OR_COARSE)
 
         Router.load(this)
+        PlacesStore.open(this)
         Voice.enabled = settings.voice
         Voice.start(this)
         setContent { Ride() }
@@ -330,7 +362,9 @@ class MainActivity : ComponentActivity() {
         // Routed: the offered pin has become the destination.
         LaunchedEffect(nav.dest, nav.route) { if (nav.route != null && nav.dest == pin) pin = null }
         BackHandler(enabled = settingsOpen) { settingsOpen = false }
-        BackHandler(enabled = !settingsOpen && pin != null) { cancelPin() }
+        BackHandler(enabled = !settingsOpen && pin != null && !whereToOpen) { cancelPin() }
+        BackHandler(enabled = whereToOpen && !settingsOpen) { whereToOpen = false }
+        val places by PlacesStore.state.collectAsState()
         Box(Modifier.fillMaxSize().background(p.bg)) {
             AndroidView(factory = { map.mapView }, modifier = Modifier.fillMaxSize())
 
@@ -355,7 +389,7 @@ class MainActivity : ComponentActivity() {
             // announces, in the banner's own words (the voice's are hers). Null
             // until minion 1's Follower publishes it; then this line is the only
             // wiring left.
-            val banner = TurnBanner.plan(nav.status, settings.imperial, "your pin")
+            val banner = TurnBanner.plan(nav.status, settings.imperial, destName ?: "your pin")
             val here = lastFix?.let { LatLon(it.latitude, it.longitude) }
             val top = banner != null || nav.route != null || pin != null
 
@@ -371,7 +405,7 @@ class MainActivity : ComponentActivity() {
                     {
                         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             banner?.let { TurnBannerView(it, p) }
-                            RouteStrip(nav, p, settings.imperial,
+                            RouteStrip(nav, p, settings.imperial, destName = destName,
                                 voiceWhy = when {
                                     !settings.voice -> null
                                     !voice.ready -> voice.why
@@ -379,8 +413,9 @@ class MainActivity : ComponentActivity() {
                                 })
                             pin?.let { at ->
                                 PinBand(at, nav, here, p, settings.imperial,
-                                    onRoute = { Navigator.go(at, settings.imperial) },
-                                    onCancel = ::cancelPin)
+                                    onRoute = { routeToPin(at) },
+                                    onCancel = ::cancelPin,
+                                    name = pinName, about = pinAbout)
                             }
                         }
                     }
@@ -403,6 +438,7 @@ class MainActivity : ComponentActivity() {
                 RoundButton(if (rec.recording) "■" else "●", p, if (rec.recording) p.bad else p.accent) {
                     onRecordTap()
                 }
+                RoundButton(p, { whereToOpen = true }) { SearchGlyph(p.accent) }
                 // Ending a route takes two taps, as stopping a recording does. Above
                 // follow, so follow is the one that comes and goes at the bottom.
                 if (nav.route != null) {
@@ -411,6 +447,18 @@ class MainActivity : ComponentActivity() {
                     }
                 }
                 if (locationGranted && !following) RoundButton(p, { map.follow() }) { FollowGlyph(p.accent) }
+            }
+
+            if (whereToOpen) {
+                WhereToPanel(
+                    p = p, state = places, imperial = settings.imperial,
+                    onQuery = { PlacesStore.search(it, lastFix?.let { f -> LatLon(f.latitude, f.longitude) }) },
+                    onPick = { hit ->
+                        offer(hit.at, hit.name, hit.detail)
+                        whereToOpen = false
+                    },
+                    onClose = { whereToOpen = false },
+                )
             }
 
             if (settingsOpen) {
