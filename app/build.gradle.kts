@@ -51,6 +51,11 @@ dependencies {
     // follow and draws the bike, and pmtiles://file:// is documented for it.
     implementation(libs.maplibre.android)
 
+    // Offline routing: Valhalla 3.6.3 on the phone (MIT). The tiles are built
+    // with exactly that Valhalla; TileVersionGuard refuses any other.
+    implementation(libs.valhalla.mobile)
+    implementation(libs.valhalla.models.config)
+
     // test only: none of these reach the APK.
     testImplementation(libs.junit4)
     // Reads the shipped map styles in DashOverMapTest; already :core's, so no new version.

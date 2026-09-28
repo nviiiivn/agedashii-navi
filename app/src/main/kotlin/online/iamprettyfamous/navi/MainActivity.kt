@@ -42,6 +42,8 @@ import online.iamprettyfamous.navi.prefs.Prefs
 import online.iamprettyfamous.navi.ui.Changed
 import online.iamprettyfamous.navi.ui.SettingsPanel
 import online.iamprettyfamous.navi.ui.micAccount
+import online.iamprettyfamous.navi.routing.Router
+import online.iamprettyfamous.navi.core.geo.LatLon
 import androidx.activity.compose.BackHandler
 import online.iamprettyfamous.navi.ui.ButtonColumnLayout
 import online.iamprettyfamous.navi.ui.Chip
@@ -183,6 +185,13 @@ class MainActivity : ComponentActivity() {
             prefs.edit().putBoolean("buildings", on).apply()
             map.setBuildings(on)
         }
+        intent?.getStringExtra("route")?.let { spec ->
+            // Debug: "lat,lon_lat,lon" routes between two points and logs the result.
+            runCatching {
+                val (a, b) = spec.split("_").map { it.split(",").map(String::toDouble) }
+                Router.route(LatLon(a[0], a[1]), LatLon(b[0], b[1]), settings.imperial) { }
+            }.onFailure { Log.w("NaviRouter", "bad route extra '$spec': ${it.message}") }
+        }
         if (intent?.hasExtra("mic") == true) {
             applySetting(if (intent.getBooleanExtra("mic", false)) Changed.MIC_ON else Changed.MIC_OFF)
         }
@@ -221,6 +230,7 @@ class MainActivity : ComponentActivity() {
         }
         if (locationGranted) map.enableLocation() else askLocation.launch(FINE_OR_COARSE)
 
+        Router.load(this)
         setContent { Ride() }
         // A ride Android cut off while the app was dead is found and reported here.
         RideService.recoverInterrupted(this)

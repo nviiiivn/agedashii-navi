@@ -38,6 +38,10 @@ kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutine
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "serialization-json" }
 maplibre-android = { module = "org.maplibre.gl:android-sdk", version.ref = "maplibre" }
 valhalla-mobile = { module = "io.github.rallista:valhalla-mobile", version.ref = "valhalla-mobile" }
+# valhalla-mobile's POM declares its config models runtime-only, but its public
+# API (ValhallaConfigFactory, the Valhalla constructor) exposes them: without
+# this the app cannot compile against it. 0.5.2 is the version its POM pins.
+valhalla-models-config = { module = "io.github.rallista:valhalla-models-config", version = "0.5.2" }
 junit-bom = { module = "org.junit:junit-bom", version.ref = "junit-bom" }
 junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher" }
 # test only
