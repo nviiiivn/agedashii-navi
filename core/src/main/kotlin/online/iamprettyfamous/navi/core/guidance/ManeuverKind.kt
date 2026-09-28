@@ -78,7 +78,16 @@ object ManeuverKind {
      * measures turn_degree - in Valhalla 3.6.3's own bands (src/baldr/turn.cc,
      * make_turn_type_lut, read from the tag 2026-09-28): 0-10 and 350-359
      * straight, 11-44 slight right, 45-135 right, 136-159 sharp right, 160-200
-     * reverse, 201-224 sharp left, 225-315 left, 316-349 slight left.
+     * reverse, 201-224 sharp left, 225-315 left, 316-349 slight left. 3.8.3
+     * (the server's) has the identical table - checked, 2026-09-28.
+     *
+     * The Flet router deviates on purpose (minion 4, agreed, AGEDASHII
+     * approved): 11-20 degrees is continue there, because it also speaks
+     * junctions where only the street name changes, and Valhalla stays silent
+     * at 138 of 150 of those - slight would fire her clip on roads that merely
+     * bend. The cost, written down rather than assumed away: at the 12 in 150
+     * where Valhalla does emit slight, this app says slight and the Flet app
+     * says continue (KNOWN.md).
      */
     fun fromTurnDegree(degrees: Int): String = when (((degrees % 360) + 360) % 360) {
         in 0..10, in 350..359 -> CONTINUE
