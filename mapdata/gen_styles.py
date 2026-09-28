@@ -199,6 +199,11 @@ def gate(key, c):
     return rows
 
 
+def l_placement(layer):
+    """How a symbol layer is placed: "line" runs along a road, else "point"."""
+    return (layer.get("layout") or {}).get("symbol-placement", "point")
+
+
 def is_red_or_black(h):
     hue, sat = hue_deg(h)
     return luminance(h) < 0.002 or (sat < 0.02 and luminance(h) < 0.01) or hue <= 20 or hue >= 340
@@ -232,7 +237,19 @@ def build(key, theme, schema, tiles_info):
         # and says nothing; leave it out so the style lists what is really there.
         have = set(tiles_info["layers"])
         layers = [l for l in layers if "source-layer" not in l or l["source-layer"] in have]
-    first_label = next(l["id"] for l in layers if l["type"] == "symbol")
+    # WHERE THE ROUTE GOES: above every label that runs ALONG a road (street
+    # names, route refs), below the point labels (neighbourhoods, towns).
+    #
+    # It used to go below the first label of any kind, so street names drew on
+    # top of it - and on the road the route follows, the name sits on the route
+    # itself, its land-coloured halo biting boxes out of the line. Seen at z17
+    # in the first close render (2026-09-28), invisible to every number here.
+    # A route that breaks up at riding zoom is the one thing this map must not
+    # do; the turn banner names the street, so the name under it is not lost.
+    symbols = [i for i, l in enumerate(layers) if l["type"] == "symbol"]
+    along = [i for i in symbols if l_placement(layers[i]) == "line"]
+    after = [i for i in symbols if i > (along[-1] if along else -1)]
+    route_below = layers[after[0]]["id"] if after else None
     source = {"type": "vector", "url": "{TILES}", "attribution": schema.ATTRIBUTION}
     if tiles_info:
         source.update(minzoom=tiles_info["min_zoom"], maxzoom=tiles_info["max_zoom"],
@@ -243,12 +260,14 @@ def build(key, theme, schema, tiles_info):
         "metadata": {
             "agedashii:theme": key,
             "agedashii:schema": schema.NAME,
-            "agedashii:route-below": first_label,
+            "agedashii:route-below": route_below,
             "agedashii:route": {
                 "line-color": c["route"], "casing-color": c["route_casing"],
                 "line-width": schema.width("motorway", 1.25 * wide),
                 "casing-extra-px": 3,
-                "note": "draw the route as a GeoJSON line layer added below agedashii:route-below",
+                "note": "draw the route as a GeoJSON line layer added below agedashii:route-below "
+                        "(null: add it on top). Street-name labels are BELOW that slot on purpose, "
+                        "so no halo cuts the route.",
             },
             "agedashii:road-tint": ROAD_TINT,
             "agedashii:palette": theme["palette"],
@@ -261,6 +280,12 @@ def build(key, theme, schema, tiles_info):
                     "paint": {"background-color": c[schema.BACKGROUND]}}] + layers,
     }
     rows = gate(key, c)
+    # Structural: nothing drawn along a road may sit above the route's slot.
+    slot = next((i for i, l in enumerate(style["layers"]) if l["id"] == route_below),
+                len(style["layers"]))
+    over = [l["id"] for l in style["layers"][slot:]
+            if l["type"] == "symbol" and l_placement(l) == "line"]
+    rows.append(("route/labels", "line labels over route", f"{len(over)} {over[:3]}", "0", not over))
     if key in RED_ONLY:
         bad = sorted({h for h in all_colours(style) if not is_red_or_black(h)})
         rows.append(("red-only", "every style colour", f"{len(bad)} non-red {bad[:4]}", "0", not bad))

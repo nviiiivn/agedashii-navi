@@ -67,6 +67,15 @@ Software GL says a style RUNS; it says nothing about how it looks on her
 screen. Fixed from the look: OpenMapTiles drew "CA CA 61" (18 of 877 state
 refs at z14 are already prefixed in the data).
 
+Second look, close up at z17 (prompted by minion 2 - "a screenshot outranks a
+passing test"): the route was slotted below EVERY label, so the name of the
+road it follows sat on it and its land-coloured halo bit boxes out of the
+route line. Every contrast gate was green. The route now goes above the
+labels that run along roads and below the point labels (`agedashii:route-below`
+= label-neighbourhood), and a structural gate, `route/labels`, fails the build
+if any line-placed label is ever above that slot (it reports the old slot as 2
+labels over the route). 201/201 gate rows pass.
+
 ## The credit - a design cost (licences read from the LICENSE files)
 - OpenMapTiles (openmaptiles/openmaptiles LICENSE.md, design CC-BY-4.0):
   "Products or services using maps derived from OpenMapTiles schema need to
