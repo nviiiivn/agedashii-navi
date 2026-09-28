@@ -99,3 +99,13 @@ attributes in either order and skip a tag missing either one.
 7. A sensor extreme fed as an integer (say `g_vert = 1`) prints as `1.0` in the
    summary where Python keeps `1`. In practice only `rpm_est` arrives as an integer,
    and the summary rounds that to an integer either way.
+8. `ExhaustListener` holds a reading through rejected windows for at most
+   `Exhaust.RPM_HOLD_S` (2 s) since it was last accepted, then blanks it and keeps
+   the reason; audio.py held it forever, so the tach and gear badge could show a
+   minute-old figure, and that figure, as the continuity reference, rejected the
+   real rpm as a jump. `rpmAcceptedAt` is new, for showing a reading's age.
+9. `Profile.harmonic` (default 1.0, the firing fundamental) and
+   `Profile.calibratedFrom` (null = uncalibrated) are new: which multiple of the
+   firing frequency the peak picker locks onto through a given bike's exhaust is
+   an empirical fact about that bike, and has a place to go when her CB750 is
+   recorded. With the defaults every figure is the Python's.

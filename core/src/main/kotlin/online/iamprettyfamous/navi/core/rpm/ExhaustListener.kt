@@ -42,6 +42,10 @@ class ExhaustListener(machine: String? = null, private val sampleRate: Int = Exh
     var rpmAt: Double = 0.0
         private set
 
+    /** When the standing [rpmEst] was last ACCEPTED, so a gauge can show its age; null with no reading. */
+    var rpmAcceptedAt: Double? = null
+        private set
+
     /** Why the last pick was thrown away, if it was. */
     var rpmRejected: String = ""
         private set
@@ -73,8 +77,7 @@ class ExhaustListener(machine: String? = null, private val sampleRate: Int = Exh
             // Silence has no fundamental. Say nothing rather than picking the
             // loudest bin of the noise floor. (audio.py:270 wrote this reason to
             // an unread key; it belongs here.)
-            rpmEst = null
-            rpmHz = null
+            clearRpm()
             rpmRejected = Exhaust.REJECT_QUIET
             return
         }
@@ -85,11 +88,23 @@ class ExhaustListener(machine: String? = null, private val sampleRate: Int = Exh
         bands = got.bands
         rpmRejected = got.rejected
         // A rejected pick leaves the previous reading standing: one bad window in
-        // a corner should not wipe a figure that was right a second ago.
+        // a corner should not wipe a figure that was right a second ago. But only
+        // for RPM_HOLD_S - past that the figure is old, and a gauge showing it
+        // would claim a certainty it does not have (the Python held it forever).
         if (got.rpm != null) {
             rpmEst = got.rpm
             rpmHz = got.hz
+            rpmAcceptedAt = t
+        } else {
+            val acceptedAt = rpmAcceptedAt
+            if (acceptedAt == null || t - acceptedAt > Exhaust.RPM_HOLD_S) clearRpm()
         }
+    }
+
+    private fun clearRpm() {
+        rpmEst = null
+        rpmHz = null
+        rpmAcceptedAt = null
     }
 
     /** The recorder's state, by name: listening while it records and has not stopped. */
@@ -107,7 +122,7 @@ class ExhaustListener(machine: String? = null, private val sampleRate: Int = Exh
     /** The recorder stopped: the gauges go blank rather than freezing on the last reading. */
     fun stopped() {
         listening = false
-        rpmEst = null
+        clearRpm()
         loudnessDb = null
         loudnessNorm = null
     }
@@ -118,8 +133,7 @@ class ExhaustListener(machine: String? = null, private val sampleRate: Int = Exh
      */
     fun setMachine(machine: String?) {
         this.machine = machine
-        rpmEst = null
-        rpmHz = null
+        clearRpm()
     }
 
     fun resetPeaks() {

@@ -14,6 +14,27 @@ import kotlin.test.assertTrue
  */
 class BikesTest {
     @Test
+    fun `every bike ships uncalibrated, on the firing fundamental`() {
+        for ((key, bike) in Bikes.PROFILES) {
+            assertEquals(1.0, bike.harmonic, key)
+            assertFalse(bike.calibrated, "$key: no recording of it has been made")
+        }
+    }
+
+    @Test
+    fun `a bike whose exhaust sings at the second harmonic reads half the rpm for the same Hz`() {
+        val cb = Bikes.profile("cb750")
+        val second = cb.copy(harmonic = 2.0, calibratedFrom = "a recording")
+        assertEquals(Bikes.rpmFromHz(100.0, cb)!! / 2.0, Bikes.rpmFromHz(100.0, second)!!, 1e-9)
+        assertEquals(Bikes.hzFromRpm(4000.0, cb)!! * 2.0, Bikes.hzFromRpm(4000.0, second)!!, 1e-9)
+        // The search band follows the harmonic, or the picker would look in the wrong place.
+        assertEquals(Bikes.bandHz(cb).second * 2.0, Bikes.bandHz(second).second, 1e-9)
+        assertTrue(second.calibrated)
+        // The defaults change nothing: the Python's figures, by key or by profile.
+        assertEquals(Bikes.rpmFromHz(100.0, "cb750"), Bikes.rpmFromHz(100.0, cb))
+    }
+
+    @Test
     fun `a four fires twice per revolution and a twin once`() {
         assertEquals(2.0, Bikes.firingRatio("cb750"))
         assertEquals(1.0, Bikes.firingRatio("ex250"))

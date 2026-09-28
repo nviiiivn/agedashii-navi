@@ -95,6 +95,26 @@ class ExhaustListenerTest {
     }
 
     @Test
+    fun `a rejected reading stands for two seconds and no longer`() {
+        // A deliberate departure: audio.py held it forever (PORTING.md).
+        ear.listening = true
+        ear.onSamples(note(2000.0), t = 1000.0)
+        val good = ear.rpmEst!!
+        assertEquals(1000.0, ear.rpmAcceptedAt)
+        ear.onSamples(note(8500.0), t = 1001.0)
+        ear.onSamples(note(8500.0), t = 1002.0)
+        assertEquals(good, ear.rpmEst, "held through ${Exhaust.RPM_HOLD_S} s of rejections")
+        ear.onSamples(note(8500.0), t = 1003.0)
+        assertNull(ear.rpmEst, "three seconds old: blank, not a stale figure")
+        assertNull(ear.rpmAcceptedAt)
+        assertTrue("jump" in ear.rpmRejected, "the reason stays for the line beside record")
+        // And the stale figure no longer rejects the real one as a jump.
+        ear.onSamples(note(8500.0), t = 1004.0)
+        assertEquals(8500.0, ear.rpmEst!!, 400.0)
+        assertEquals(1004.0, ear.rpmAcceptedAt)
+    }
+
+    @Test
     fun `changing the bike forgets the continuity reference`() {
         // audio.py:385-392.
         ear.listening = true

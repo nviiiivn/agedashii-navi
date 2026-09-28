@@ -1,5 +1,6 @@
 package online.iamprettyfamous.navi.core.dash
 
+import online.iamprettyfamous.navi.core.bikes.Bikes
 import online.iamprettyfamous.navi.core.gears.Gears
 import online.iamprettyfamous.navi.core.guidance.SpeedLimit
 import online.iamprettyfamous.navi.core.rpm.ExhaustListener
@@ -50,6 +51,13 @@ data class DashState(
     val climbSinceStartM: Double? = null,
     val climbMps: Double? = null,
     val rpm: Double? = null,
+    /**
+     * Whether this bike's rpm is calibrated against a recording of it
+     * (Profile.calibratedFrom). False - an uncalibrated estimate - until her
+     * CB750 is recorded; a gauge must not make the figure look surer than that.
+     * A property of the bike, not a reading.
+     */
+    val rpmCalibrated: Boolean = false,
     /** Derived by [build] from speed, rpm and bike, never set on its own. */
     val gear: Int? = null,
     /** "up", "down" or "". */
@@ -139,6 +147,7 @@ data class DashState(
                 climbSinceStartM = climbSinceStartM,
                 climbMps = Climb.best(motion?.climbMps, gpsClimb?.climbMps),
                 rpm = rpm,
+                rpmCalibrated = Bikes.profile(machine).calibrated,
                 gear = gear,
                 shift = Gears.shiftHint(rpm, gear, machine),
                 bands = ear?.bands?.takeIf { it.isNotEmpty() },

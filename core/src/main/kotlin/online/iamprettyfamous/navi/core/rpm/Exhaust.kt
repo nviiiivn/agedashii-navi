@@ -38,6 +38,17 @@ object Exhaust {
     /** How often the RPM estimate is recomputed. Loudness updates on every chunk. */
     const val RPM_EVERY_S = 1.0
 
+    /**
+     * How long a reading stands through REJECTED windows: two of them at
+     * [RPM_EVERY_S]. The Python held it forever, so with the engine off in wind,
+     * or the phone knocked in its mount, the tach and the gear badge showed a
+     * figure from a minute ago with no sign it was old - and, as the continuity
+     * reference, that stale figure rejected the real rpm as an "implausible
+     * jump" for as long as it stood. The rpm must never look more certain than
+     * it is. A deliberate departure: PORTING.md.
+     */
+    const val RPM_HOLD_S = 2.0
+
     /** Below this the engine is off or the mic is blocked, and no RPM is claimed. */
     const val QUIET_DBFS = -55.0
 

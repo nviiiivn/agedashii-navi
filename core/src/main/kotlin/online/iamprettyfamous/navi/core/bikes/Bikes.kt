@@ -71,31 +71,36 @@ object Bikes {
      * `cylinders / (strokes / 2)` - a four-stroke completes one power stroke
      * every two revolutions per cylinder.
      */
-    fun firingRatio(key: String? = null): Double {
-        val bike = profile(key)
-        return bike.cylinders / (bike.strokes / 2.0)
-    }
+    fun firingRatio(key: String? = null): Double = firingRatio(profile(key))
 
-    /** Engine speed from the exhaust fundamental, or null. */
-    fun rpmFromHz(hz: Double?, key: String? = null): Double? {
+    fun firingRatio(bike: Profile): Double = bike.cylinders / (bike.strokes / 2.0)
+
+    /** Engine speed from the frequency the picker locked onto, or null. */
+    fun rpmFromHz(hz: Double?, key: String? = null): Double? = rpmFromHz(hz, profile(key))
+
+    /** As above for one profile: the picked Hz is [Profile.harmonic] times the firing frequency. */
+    fun rpmFromHz(hz: Double?, bike: Profile): Double? {
         if (hz == null || hz <= 0.0) return null
-        return hz * 60.0 / firingRatio(key)
+        return hz * 60.0 / (firingRatio(bike) * bike.harmonic)
     }
 
-    /** The fundamental a given engine speed should produce. The inverse. */
-    fun hzFromRpm(rpm: Double?, key: String? = null): Double? {
+    /** The frequency a given engine speed should produce at the picked harmonic. The inverse. */
+    fun hzFromRpm(rpm: Double?, key: String? = null): Double? = hzFromRpm(rpm, profile(key))
+
+    fun hzFromRpm(rpm: Double?, bike: Profile): Double? {
         if (rpm == null || rpm <= 0.0) return null
-        return rpm * firingRatio(key) / 60.0
+        return rpm * firingRatio(bike) * bike.harmonic / 60.0
     }
 
     /**
      * (low, high) of the band worth searching for this bike, from its own idle
      * and redline. The floor is clamped at [BAND_FLOOR_HZ].
      */
-    fun bandHz(key: String? = null): Pair<Double, Double> {
-        val bike = profile(key)
-        val low = hzFromRpm(bike.idleRpm.toDouble(), key) ?: 20.0
-        val high = hzFromRpm(bike.redlineRpm.toDouble(), key) ?: 200.0
+    fun bandHz(key: String? = null): Pair<Double, Double> = bandHz(profile(key))
+
+    fun bandHz(bike: Profile): Pair<Double, Double> {
+        val low = hzFromRpm(bike.idleRpm.toDouble(), bike) ?: 20.0
+        val high = hzFromRpm(bike.redlineRpm.toDouble(), bike) ?: 200.0
         return maxOf(BAND_FLOOR_HZ, low * (1.0 - BAND_MARGIN)) to high * (1.0 + BAND_MARGIN)
     }
 
@@ -123,4 +128,15 @@ data class Profile(
     val strokes: Int,
     val idleRpm: Int,
     val redlineRpm: Int,
-)
+    /**
+     * Which multiple of the firing frequency the peak picker actually locks onto
+     * through THIS bike's airbox and exhaust: 1.0, the firing fundamental, as the
+     * Python assumed, until a recording says otherwise. An empirical fact about
+     * one machine, not a law - so it lives in the profile.
+     */
+    val harmonic: Double = 1.0,
+    /** The recording that measured [harmonic], or null: UNCALIBRATED, and a gauge should say so. */
+    val calibratedFrom: String? = null,
+) {
+    val calibrated: Boolean get() = calibratedFrom != null
+}

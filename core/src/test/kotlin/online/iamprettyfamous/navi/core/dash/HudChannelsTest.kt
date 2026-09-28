@@ -53,7 +53,7 @@ class HudChannelsTest {
 
     @Test
     fun `every DashState reading has a Field - settings aside`() {
-        val settings = setOf("imperial", "machine")
+        val settings = setOf("imperial", "machine", "rpmCalibrated")
         val readings = DashState::class.java.declaredFields
             .filter { !Modifier.isStatic(it.modifiers) }.map { it.name }.filter { it !in settings }
         assertEquals(Field.entries.size, readings.size, "a DashState field has no Field: $readings")
