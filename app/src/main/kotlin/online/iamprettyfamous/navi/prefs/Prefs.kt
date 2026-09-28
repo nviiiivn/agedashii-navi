@@ -45,6 +45,14 @@ class Prefs(context: Context) {
         get() = raw.getBoolean("voice", true)
         set(v) = raw.edit().putBoolean("voice", v).apply()
 
+    /**
+     * The street name after her own recorded line. Off by default: a robot saying
+     * "Broadway" after "GO LEFT IF YOU WANT TO LIVE" ruins the joke (voicelines.py).
+     */
+    var voiceStreets: Boolean
+        get() = raw.getBoolean("voice_streets", false)
+        set(v) = raw.edit().putBoolean("voice_streets", v).apply()
+
     var keepAwake: Boolean
         get() = raw.getBoolean("keep_awake", true)
         set(v) = raw.edit().putBoolean("keep_awake", v).apply()

@@ -11,6 +11,7 @@ import online.iamprettyfamous.navi.core.guidance.RerouteGate
 import online.iamprettyfamous.navi.core.guidance.Status
 import online.iamprettyfamous.navi.core.routing.Arrival
 import online.iamprettyfamous.navi.core.routing.ArrivalGap
+import online.iamprettyfamous.navi.core.voice.VoiceLines
 import online.iamprettyfamous.navi.voice.Voice
 
 /**
@@ -56,6 +57,11 @@ object Navigator {
     private var generation = 0
     // Re-routes to THIS destination; the Follower's own count spans them all.
     private var reroutes = 0
+    // Her situation lines (start, off route, re-routing), each on its edge. The
+    // token is new with every destination she picks, even the same place again,
+    // so a new start is a start and a re-route is not.
+    private val cues = VoiceLines.Cues()
+    private var destination: Any? = null
 
     /** Route from where she is to [dest]. With no fix yet, the route starts at the first one. */
     fun go(dest: LatLon, imperial: Boolean) {
@@ -63,6 +69,7 @@ object Navigator {
             this.imperial = imperial
             follower.imperial = imperial
             generation++
+            destination = Any()
             _nav.value = _nav.value.copy(asking = dest, failed = "", failedFor = null)
             here?.let { ask(it, dest, generation, first = true) }
         }
@@ -82,6 +89,7 @@ object Navigator {
     fun clear() {
         synchronized(lock) {
             generation++
+            destination = null
             follower.setRoute(null)
             _nav.value = Nav()
         }
@@ -101,13 +109,17 @@ object Navigator {
             val speed = if (fix.hasSpeed()) fix.speed.toDouble() else null
             val status = follower.update(p, speed, now)
             val dest = nav.dest
+            var rerouting = false
             if (dest != null && follower.shouldReroute() && gate.shouldAsk(true, now)) {
                 gate.begin(now)
                 ask(p, dest, generation, first = false)
+                rerouting = true
             }
             _nav.value = _nav.value.copy(status = status)
-            // The Follower decides what is due; each prompt comes once.
-            status.say?.let(Voice::say)
+            // The Follower decides what is due; each prompt comes once - in her
+            // voice where she has one, after any situation line of this fix.
+            val said = cues.update(status.ok, status.offRoute, destination, rerouting, over = false, now = now)
+            Voice.prompt(status, imperial, said)
         }
     }
 
@@ -143,8 +155,8 @@ object Navigator {
             Log.i(TAG, "following: ${line.maneuvers.size} turns, reroutes=$reroutes, gap=${gap?.metres?.toInt()} m")
             _nav.value = Nav(dest = dest, route = line, status = status, gap = gap, reroutes = reroutes)
             // The first update of a new route can already be inside a prompt band;
-            // the Follower counts it said, so it must be said here.
-            status?.say?.let(Voice::say)
+            // the Follower counts it said, so it must be said here - after "start".
+            status?.let { Voice.prompt(it, imperial, cues.update(it.ok, it.offRoute, destination, false, over = false, now = now)) }
         }
     }
 }

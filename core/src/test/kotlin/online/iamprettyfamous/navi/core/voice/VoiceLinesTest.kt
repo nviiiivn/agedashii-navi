@@ -77,6 +77,24 @@ class VoiceLinesTest {
     }
 
     @Test
+    fun `minion 3's shared vectors - the Flet app runs the same table`() {
+        // tests/test_voicelines.py WhichDistance, prompt in feet.
+        val arnold = setOf("dist-200ft", "dist-400ft", "dist-800ft", "dist-1500ft")
+        val want = mapOf(
+            148.0 to "dist-200ft", 200.0 to "dist-200ft", 279.0 to "dist-200ft", 289.0 to "dist-400ft",
+            820.0 to "dist-800ft", 1640.0 to "dist-1500ft", 2247.0 to "dist-1500ft", 98.0 to null,
+            2251.0 to null, 5280.0 to null, 0.0 to null, Math.sqrt(200.0 * 400.0) to "dist-200ft",
+        )
+        for ((feet, clip) in want) assertEquals(clip, VoiceLines.nearestDistance(ft(feet), arnold), "$feet ft")
+        assertNull(VoiceLines.nearestDistance(null, arnold))
+        assertNull(VoiceLines.nearestDistance(ft(400.0), emptySet()))
+        val legacy = setOf("dist-quarter", "dist-0.5mile", "dist-2miles")
+        assertEquals("dist-quarter", VoiceLines.nearestDistance(ft(1300.0), legacy))
+        assertEquals("dist-0.5mile", VoiceLines.nearestDistance(ft(2700.0), legacy))
+        assertEquals("dist-2miles", VoiceLines.nearestDistance(ft(10000.0), legacy))
+    }
+
+    @Test
     fun `her line and her distance, then nothing of ours`() {
         val items = VoiceLines.playlist(
             "In 400 ft, Turn right onto 13th Street", "turn-right", "near", ft(400.0),

@@ -99,13 +99,15 @@ object VoiceLines {
     fun nearestDistance(metres: Double?, have: Set<String>): String? {
         if (metres == null || metres <= 0.0) return null
         val feet = metres * FEET_PER_M
-        val limit = ln(DISTANCE_BOUND) + 1e-12
+        // minion 3's exact key (voicelines.distance_clip): |ln ratio| rounded to
+        // 9 decimals, so exactly x1.5 still counts and a true tie is a tie
+        // despite floating point; then the shorter clip.
+        fun nine(x: Double) = Math.round(x * 1e9)
+        val limit = nine(ln(DISTANCE_BOUND))
         return have.mapNotNull { name -> distanceFeet(name)?.let { name to it } }
-            .map { (name, clipFeet) -> Triple(name, clipFeet, abs(ln(clipFeet / feet))) }
+            .map { (name, clipFeet) -> Triple(name, clipFeet, nine(abs(ln(feet / clipFeet)))) }
             .filter { it.third <= limit }
-            // Rounded before comparing, so a true tie (a prompt exactly between two
-            // clips) is a tie despite floating point, and the smaller wins.
-            .minWithOrNull(compareBy<Triple<String, Double, Double>> { Math.round(it.third * 1e9) }.thenBy { it.second })
+            .minWithOrNull(compareBy<Triple<String, Double, Long>> { it.third }.thenBy { it.second })
             ?.first
     }
 

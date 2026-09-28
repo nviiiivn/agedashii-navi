@@ -4,6 +4,7 @@ import android.content.Context
 import android.media.AudioAttributes
 import android.media.AudioFocusRequest
 import android.media.AudioManager
+import android.media.MediaPlayer
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -14,6 +15,9 @@ import android.speech.tts.Voice as TtsVoice
 import android.util.Log
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import online.iamprettyfamous.navi.core.guidance.Status
+import online.iamprettyfamous.navi.core.voice.VoiceLines
+import online.iamprettyfamous.navi.core.voice.VoiceLines.Item
 import java.io.File
 import java.util.Locale
 
@@ -30,6 +34,9 @@ import java.util.Locale
  *   does not read the voice as an engine.
  * - With no offline voice installed it says so, in [State.why], in words she
  *   can act on - never a silent failure.
+ * - Her recorded lines come first ([prompt], VoiceLines): a prompt is a
+ *   sequence of her clips and the phone's words, played as ONE utterance under
+ *   one focus hold, and a clip that will not play is replaced by its own words.
  */
 object Voice {
     private const val TAG = "NaviVoice"
@@ -71,11 +78,23 @@ object Voice {
     private var seq = 0
     private var candidates: List<TtsVoice> = emptyList()
     private var checking = -1
-    private var pending: Pair<String, Long>? = null
+    private var pending: Pending? = null
     private lateinit var checkFile: File
+    private lateinit var app: Context
+
+    /** A prompt held while the voice starts or is checked, and when it came. */
+    private class Pending(val items: List<Item>, val label: String, val at: Long)
+
+    /** What the current prompt plays, one item after another, and which is playing. */
+    private var sequence: List<Item> = emptyList()
+    private var step = 0
+    private var player: MediaPlayer? = null
 
     /** Her Settings switch; the prompts are still worked out, just not said. */
     @Volatile var enabled = true
+
+    /** Her switch for the street name after her own line: off by default, or a robot finishes her joke. */
+    @Volatile var streets = false
 
     @Volatile private var speakingNow = false
     @Volatile private var quietUntil = 0L
@@ -88,7 +107,7 @@ object Voice {
     /** Start the engine once. Main thread. */
     fun start(context: Context) {
         if (tts != null) return
-        val app = context.applicationContext
+        app = context.applicationContext
         audio = app.getSystemService(Context.AUDIO_SERVICE) as AudioManager
         checkFile = File(app.cacheDir, "voice-check.wav")
         tts = TextToSpeech(app) { status -> main.post { onInit(status) } }
@@ -184,7 +203,7 @@ object Voice {
             // has already counted it said, so it is said now - if still fresh.
             val waiting = pending
             pending = null
-            if (waiting != null && SystemClock.elapsedRealtime() - waiting.second < PENDING_FRESH_MS) say(waiting.first)
+            if (waiting != null && SystemClock.elapsedRealtime() - waiting.at < PENDING_FRESH_MS) play(waiting.items, waiting.label)
         }
     }
 
@@ -217,41 +236,154 @@ object Voice {
     }
 
     /** Say [text] now, cutting off anything still being said. Any thread. */
-    fun say(text: String) {
+    fun say(text: String) = play(listOf(Item.Speak(text)), text)
+
+    /**
+     * The Follower's prompt, in her voice where she has one: VoiceLines builds
+     * the items from the maneuver's kind, the band and the distance, and with
+     * none of her clips applying it is [Status.say] word for word. [cues] are
+     * situation lines that fired on the same fix (start, off route, ...): they
+     * come first, in the same utterance, so the prompt never cuts them off.
+     */
+    fun prompt(status: Status, imperial: Boolean, cues: List<String> = emptyList()) {
+        val say = status.say
+        if (say == null && cues.isEmpty()) return
+        val have = clipNames()
+        val items = cues.flatMap { VoiceLines.situation(it, have) } + (say?.let {
+            VoiceLines.playlist(it, status.kind, status.band, status.turnInM, status.instruction, status.street, imperial, have, streets)
+        } ?: emptyList())
+        play(items, listOfNotNull(cues.joinToString(", ").ifEmpty { null }, say).joinToString(" | "))
+    }
+
+    /** Her clips' names, or none before the engine started. Any thread: a directory listing. */
+    fun clipNames(): Set<String> = if (::app.isInitialized) VoiceClips.have(app) else emptySet()
+
+    /**
+     * Play [items] as one utterance, cutting off anything still playing. Any
+     * thread. Held, not dropped, while the phone's voice starts or is checked -
+     * unless every item is her clip, which needs no engine. [preview] plays even
+     * with spoken turns off.
+     */
+    fun play(items: List<Item>, label: String, preview: Boolean = false) {
         main.post {
-            val t = tts
-            if (!enabled || t == null || !_state.value.ready) {
-                val why = _state.value.why
-                if (enabled && (why == STARTING || why == CHECKING)) pending = text to SystemClock.elapsedRealtime()
-                Log.i(TAG, "not said yet (${if (!enabled) "voice off" else why}): $text")
+            // A preview is her testing a file in Settings: it plays whether or not
+            // spoken turns are on for the ride.
+            if ((!enabled && !preview) || items.isEmpty()) {
+                if (items.isNotEmpty()) Log.i(TAG, "not said (voice off): $label")
                 return@post
             }
+            val t = tts
+            val needsEngine = items.any { it is Item.Speak }
+            if (needsEngine && (t == null || !_state.value.ready)) {
+                val why = _state.value.why
+                if (why == STARTING || why == CHECKING) pending = Pending(items, label, SystemClock.elapsedRealtime())
+                Log.i(TAG, "not said yet ($why): $label")
+                return@post
+            }
+            stopCurrent()
             val id = "p${++seq}"
             current = id
+            sequence = items
+            step = 0
             speakingNow = true
             holdFocus()
-            t.speak(text, TextToSpeech.QUEUE_FLUSH, Bundle(), id)
-            _state.value = _state.value.copy(speaking = true, last = text)
-            Log.i(TAG, "say: $text")
+            _state.value = _state.value.copy(speaking = true, last = label, failed = "")
+            Log.i(TAG, "say: $label")
+            playStep(id)
         }
+    }
+
+    /** Main thread. The next item of [sequence], or the end of the utterance. */
+    private fun playStep(id: String) {
+        if (id != current) return
+        if (step >= sequence.size) return end(id)
+        when (val item = sequence[step]) {
+            is Item.Speak -> speak(id, item.text)
+            is Item.Clip -> playClip(id, item)
+        }
+    }
+
+    private fun speak(id: String, text: String) {
+        val t = tts
+        if (t == null || !_state.value.ready) return advance(id)
+        t.speak(text, TextToSpeech.QUEUE_FLUSH, Bundle(), "$id.$step")
+    }
+
+    private fun playClip(id: String, item: Item.Clip) {
+        val file = VoiceClips.clips(app)[item.name]
+        if (file == null) return fallback(id, item, "gone")
+        val at = step
+        val mp = MediaPlayer()
+        try {
+            mp.setAudioAttributes(attributes)
+            mp.setDataSource(file.path)
+            mp.setOnCompletionListener { main.post { if (id == current && step == at) advance(id) } }
+            mp.setOnErrorListener { _, what, extra ->
+                main.post { if (id == current && step == at) fallback(id, item, "error $what/$extra") }
+                true
+            }
+            mp.prepare()
+            mp.start()
+            player = mp
+            Log.d(TAG, "$id.$at clip ${file.name}")
+        } catch (e: Exception) {
+            mp.release()
+            fallback(id, item, e.toString())
+        }
+    }
+
+    /** A clip that will not play is said by the phone instead - never silence. */
+    private fun fallback(id: String, item: Item.Clip, why: String) {
+        Log.w(TAG, "clip ${item.name} would not play ($why)")
+        releasePlayer()
+        val words = item.fallback
+        if (words != null && tts != null && _state.value.ready) speak(id, words) else advance(id)
+    }
+
+    private fun advance(id: String) {
+        if (id != current) return
+        releasePlayer()
+        step++
+        playStep(id)
+    }
+
+    private fun end(id: String) {
+        if (id != current) return
+        current = null
+        sequence = emptyList()
+        speakingNow = false
+        quietUntil = SystemClock.elapsedRealtime() + TAIL_MS
+        dropFocus()
+        _state.value = _state.value.copy(speaking = false)
+    }
+
+    /** A newer prompt flushes the one being played: a stale instruction heard late is worse than silence. */
+    private fun stopCurrent() {
+        if (current == null) return
+        current = null
+        releasePlayer()
+        tts?.stop()
+    }
+
+    private fun releasePlayer() {
+        player?.let {
+            try { it.stop() } catch (_: IllegalStateException) {}
+            it.release()
+        }
+        player = null
     }
 
     /** True while the voice speaks and for [TAIL_MS] after. Any thread. */
     fun quiet(): Boolean = speakingNow || SystemClock.elapsedRealtime() < quietUntil
 
+    /** A phone-voice item ended: "p<n>.<step>". Only the current utterance's newest item counts. */
     private fun finished(id: String, how: String, error: Int?) {
         main.post {
             Log.d(TAG, "$id $how")
-            // An utterance flushed by a newer one ends too; only the newest counts.
-            if (id != current) return@post
-            current = null
-            speakingNow = false
-            quietUntil = SystemClock.elapsedRealtime() + TAIL_MS
-            dropFocus()
-            _state.value = _state.value.copy(
-                speaking = false,
-                failed = error?.let { "the last prompt failed: ${errorName(it)}" } ?: "",
-            )
+            val prompt = id.substringBefore('.')
+            if (prompt != current || id.substringAfter('.', "").toIntOrNull() != step) return@post
+            if (error != null) _state.value = _state.value.copy(failed = "the last prompt failed: ${errorName(error)}")
+            advance(prompt)
         }
     }
 
