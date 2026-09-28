@@ -39,6 +39,8 @@ import online.iamprettyfamous.navi.core.theme.Role
 import online.iamprettyfamous.navi.dash.ink
 import online.iamprettyfamous.navi.dash.TurnBannerView
 import online.iamprettyfamous.navi.core.dash.TurnBanner
+import online.iamprettyfamous.navi.core.guidance.Status
+import online.iamprettyfamous.navi.core.guidance.Guidance
 import online.iamprettyfamous.navi.record.RecState
 import online.iamprettyfamous.navi.record.RideService
 import online.iamprettyfamous.navi.record.Telemetry
@@ -274,6 +276,14 @@ class MainActivity : ComponentActivity() {
             PlacesStore.search(q, Telemetry.fix.value?.let { LatLon(it.latitude, it.longitude) })
         }
         intent?.getStringExtra("say")?.let { Voice.say(it) }
+        // Debug: "kind,band,metres,instruction" plays one Follower-shaped prompt
+        // through her clips, as a ride would - so a mixed prompt (her clip, the
+        // phone's words, her clip) can be proved on a phone that is not moving.
+        intent?.getStringExtra("prompt")?.split(",", limit = 4)?.takeIf { it.size == 4 }?.let { (kind, band, metres, words) ->
+            val m = metres.toDoubleOrNull()
+            val say = Guidance.spoken(words, "", m, settings.imperial, band)
+            Voice.prompt(Status(ok = true, say = say, kind = kind, band = band, turnInM = m, instruction = words), settings.imperial)
+        }
         if (intent?.hasExtra("mic") == true) {
             applySetting(if (intent.getBooleanExtra("mic", false)) Changed.MIC_ON else Changed.MIC_OFF)
         }
