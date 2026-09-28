@@ -54,7 +54,12 @@ object VoiceLines {
     /** The two distances sent to her before the set was opened up; still accepted. */
     private val LEGACY_FEET = mapOf("dist-quarter" to 1320.0, "dist-half" to 2640.0)
 
-    private val DISTANCE = Regex("""dist-(\d+(?:\.\d+)?)(ft|mile|miles)""")
+    /**
+     * minion 4's exact grammar for the Flet import (2026-09-28): no leading
+     * zero, so each distance has one spelling; an optional dash before the unit,
+     * dropped from the stored name (dist_5_mile is dist-5mile).
+     */
+    private val DISTANCE = Regex("""dist-((?:0|[1-9][0-9]*)(?:\.[0-9]+)?)-?(ft|mile|miles)""")
 
     const val FEET_PER_M = 3.280839895
 
@@ -67,9 +72,13 @@ object VoiceLines {
         if (dot <= 0) return null to ""
         val ext = filename.substring(dot).lowercase()
         if (ext !in EXTS) return null to ext
-        val name = normalise(filename.substring(0, dot))
+        val name = canonical(normalise(filename.substring(0, dot)))
         return (if (isName(name)) name else null) to ext
     }
+
+    /** The stored spelling of a name: a distance loses the dash before its unit. */
+    fun canonical(name: String): String =
+        DISTANCE.matchEntire(name)?.let { "dist-${it.groupValues[1]}${it.groupValues[2]}" } ?: name
 
     fun isName(name: String): Boolean = name in FIXED || distanceFeet(name) != null
 

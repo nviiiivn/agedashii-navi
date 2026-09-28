@@ -40,6 +40,21 @@ class VoiceLinesTest {
     }
 
     @Test
+    fun `minion 4's distance grammar, exactly - accepted and refused`() {
+        val accepted = mapOf(
+            "dist-400ft" to "dist-400ft", "dist-1500ft" to "dist-1500ft", "dist-0.5mile" to "dist-0.5mile",
+            "dist-1.5miles" to "dist-1.5miles", "dist-250.5ft" to "dist-250.5ft", "DIST 3MILES" to "dist-3miles",
+            "dist_5_mile" to "dist-5mile",
+        )
+        for ((file, name) in accepted) assertEquals(name, VoiceLines.parse("$file.mp3").first, file)
+        val refused = listOf(
+            "dist-0ft", "dist-0.0mile", "dist-012ft", "dist-.5mile", "dist-5.ft", "dist-1e3ft",
+            "dist-12km", "dist--5ft", "dist-ft", "dist-abcft",
+        )
+        for (file in refused) assertNull(VoiceLines.parse("$file.mp3").first, file)
+    }
+
+    @Test
     fun `distances read in feet`() {
         assertEquals(400.0, VoiceLines.distanceFeet("dist-400ft"))
         assertEquals(2640.0, VoiceLines.distanceFeet("dist-0.5mile"))
