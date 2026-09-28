@@ -1,0 +1,141 @@
+{
+  "_source": "apps/navi/agedashii_navi/theme.py THEMES / THEME_NAMES / DARK_THEMES, extracted with ast.literal_eval by gen_styles.py --sync-from; do not hand-edit",
+  "themes": {
+    "night": {
+      "name": "Night",
+      "dark": true,
+      "palette": {
+        "bg": "#06080b",
+        "surface": "#0e1319",
+        "border": "#1e2733",
+        "text": "#f2f6fb",
+        "text2": "#9fb0c3",
+        "text3": "#5f7183",
+        "accent": "#39d0ff",
+        "warn": "#ffb020",
+        "bad": "#ff4d6d",
+        "good": "#3ddc97",
+        "road": "#39d0ff"
+      }
+    },
+    "day": {
+      "name": "Day",
+      "dark": false,
+      "palette": {
+        "bg": "#eef1f5",
+        "surface": "#ffffff",
+        "border": "#c8d2de",
+        "text": "#0b1016",
+        "text2": "#41505f",
+        "text3": "#6d7d8c",
+        "accent": "#0068a8",
+        "warn": "#8a5200",
+        "bad": "#b3001f",
+        "good": "#00684a",
+        "road": "#0068a8"
+      }
+    },
+    "sunlight": {
+      "name": "Sunlight",
+      "dark": false,
+      "palette": {
+        "bg": "#ffffff",
+        "surface": "#ffffff",
+        "border": "#000000",
+        "text": "#000000",
+        "text2": "#1a1a1a",
+        "text3": "#333333",
+        "accent": "#0040a0",
+        "warn": "#7a3d00",
+        "bad": "#a00000",
+        "good": "#00502f",
+        "road": "#0040a0"
+      }
+    },
+    "redshift": {
+      "name": "Red night",
+      "dark": true,
+      "palette": {
+        "bg": "#000000",
+        "surface": "#0a0000",
+        "border": "#3d0d0d",
+        "text": "#ff3b30",
+        "text2": "#b32a22",
+        "text3": "#7a1d17",
+        "accent": "#ff5b4a",
+        "warn": "#ff8f6a",
+        "bad": "#ffd2c2",
+        "good": "#c2402f",
+        "road": "#ff5b4a"
+      }
+    },
+    "cyberpunk": {
+      "name": "Cyberpunk",
+      "dark": true,
+      "palette": {
+        "bg": "#0a0612",
+        "surface": "#140b22",
+        "border": "#2e1b4a",
+        "text": "#f0e6ff",
+        "text2": "#b9a6d6",
+        "text3": "#7d6b99",
+        "accent": "#00f0ff",
+        "warn": "#ff2bd6",
+        "bad": "#ff4d6d",
+        "good": "#5affc8",
+        "road": "#00f0ff"
+      }
+    },
+    "matrix": {
+      "name": "Matrix",
+      "dark": true,
+      "palette": {
+        "bg": "#000000",
+        "surface": "#041008",
+        "border": "#0e3d1f",
+        "text": "#9dffbe",
+        "text2": "#4fbf7a",
+        "text3": "#2c7a4c",
+        "accent": "#00ff66",
+        "warn": "#d7ff4a",
+        "bad": "#ff6b4a",
+        "good": "#00ff66",
+        "road": "#00ff66"
+      }
+    },
+    "pink": {
+      "name": "Pink",
+      "dark": true,
+      "palette": {
+        "bg": "#120810",
+        "surface": "#1e0f1a",
+        "border": "#40202f",
+        "text": "#ffe8f0",
+        "text2": "#d69fb6",
+        "text3": "#96687e",
+        "accent": "#ff5e8a",
+        "warn": "#ffb020",
+        "bad": "#ff3b5c",
+        "good": "#5affc8",
+        "road": "#ff5e8a"
+      }
+    },
+    "cluster": {
+      "name": "Cluster",
+      "dark": true,
+      "palette": {
+        "bg": "#080604",
+        "surface": "#141009",
+        "border": "#2e2413",
+        "text": "#ffc857",
+        "text2": "#c9973b",
+        "text3": "#8a6a2c",
+        "accent": "#ffb020",
+        "warn": "#ffe08a",
+        "bad": "#ff6b3d",
+        "good": "#b8d84a",
+        "road": "#ffb020"
+      }
+    }
+  }
+}
