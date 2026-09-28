@@ -15,6 +15,11 @@ maplibre = "13.6.1"
 # Valhalla 3.6.3 inside. The routing tiles are built with that exact version,
 # so do NOT bump this without telling whoever builds the tiles (minion 5).
 valhalla-mobile = "0.6.3"
+# The Valhalla tag valhalla-mobile pins (its src/valhalla submodule); the routing
+# tiles MUST be built with it. Not a dependency - :core's TileVersionGuardTest
+# asserts this equals VALHALLA_TILES. The 0.6.3 -> 3.6.3 mapping was read from
+# the GitHub API by hand; bumping the binding means re-reading it.
+valhalla = "3.6.3"
 
 [libraries]
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "core-ktx" }
