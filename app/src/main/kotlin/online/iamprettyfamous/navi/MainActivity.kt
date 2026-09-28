@@ -38,11 +38,14 @@ import online.iamprettyfamous.navi.dash.HudOverlay
 import online.iamprettyfamous.navi.record.RecState
 import online.iamprettyfamous.navi.record.RideService
 import online.iamprettyfamous.navi.record.Telemetry
+import online.iamprettyfamous.navi.prefs.Prefs
+import online.iamprettyfamous.navi.ui.Changed
+import online.iamprettyfamous.navi.ui.SettingsPanel
+import androidx.activity.compose.BackHandler
 import online.iamprettyfamous.navi.ui.ButtonColumnLayout
 import online.iamprettyfamous.navi.ui.Chip
 import online.iamprettyfamous.navi.ui.FollowGlyph
 import online.iamprettyfamous.navi.ui.RoundButton
-import online.iamprettyfamous.navi.ui.PALETTES
 import online.iamprettyfamous.navi.ui.Palette
 import online.iamprettyfamous.navi.ui.palette
 
@@ -62,6 +65,30 @@ class MainActivity : ComponentActivity() {
     private var locationGranted by mutableStateOf(false)
 
     private var hudLayout by mutableStateOf(Layout.DEFAULT)
+    private var dashOn by mutableStateOf(true)
+
+    private val settings by lazy { Prefs(this) }
+    private var settingsOpen by mutableStateOf(false)
+    private var settingsRev by mutableStateOf(0)
+
+    /** Applies a changed setting at once - never "from the next start". */
+    private fun applySetting(what: Changed) {
+        when (what) {
+            Changed.THEME -> { theme = settings.theme; map.applyTheme(theme) }
+            Changed.BIKE -> { bike = settings.bike; map.setBike(bike) }
+            Changed.BUILDINGS -> map.setBuildings(settings.buildings)
+            Changed.NORTH_UP -> map.setNorthUp(settings.northUp)
+            Changed.KEEP_AWAKE -> keepAwake(settings.keepAwake)
+            Changed.HUD -> { hudLayout = Layout.of(settings.hud); dashOn = settings.dash }
+            Changed.TELEMETRY -> Telemetry.refreshPrefs(this)
+        }
+        settingsRev++
+    }
+
+    private fun keepAwake(on: Boolean) {
+        if (on) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+    }
 
     private val askLocation =
         registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
@@ -150,11 +177,12 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // keep_awake defaults on: the screen stays lit while riding.
-        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        keepAwake(settings.keepAwake)
 
         theme = prefs.getString("theme", "night") ?: "night"
         bike = prefs.getString("bike", "yellow") ?: "yellow"
         hudLayout = Layout.of(prefs.getString("hud", Layout.DEFAULT.key))
+        dashOn = settings.dash
 
         map = RideMapController(this)
         map.onFollowingChanged = { following = it }
@@ -190,7 +218,8 @@ class MainActivity : ComponentActivity() {
         // Built on the ride thread from every sensor (minion 1's Telemetry), recording or not.
         val dash by Telemetry.dash.collectAsState()
         // Sensors on demand: not recording, only the sensors behind what this layout draws run.
-        LaunchedEffect(hudLayout) { Telemetry.setDashChannels(Hud.channels(hudLayout, dashOn = true)) }
+        // Gauges off means no gauges AND no gauge sensors.
+        LaunchedEffect(hudLayout, dashOn) { Telemetry.setDashChannels(Hud.channels(hudLayout, dashOn)) }
         var nowMs by remember { mutableStateOf(System.currentTimeMillis()) }
         LaunchedEffect(Unit) {
             while (true) {
@@ -201,6 +230,9 @@ class MainActivity : ComponentActivity() {
                 delay(500)
             }
         }
+        @Suppress("UNUSED_VARIABLE") val rev = settingsRev // a change in Settings redraws the ride screen
+        val sensorLines by Telemetry.sensors.collectAsState()
+        BackHandler(enabled = settingsOpen) { settingsOpen = false }
         Box(Modifier.fillMaxSize().background(p.bg)) {
             AndroidView(factory = { map.mapView }, modifier = Modifier.fillMaxSize())
 
@@ -214,7 +246,7 @@ class MainActivity : ComponentActivity() {
             }
             // How tall the lines beside record are, measured: the dash moves out from under them.
             var linesDp by remember { mutableStateOf(0) }
-            HudOverlay(Hud.plan(dash, hudLayout, wide, anchor), p, linesDp = linesDp)
+            HudOverlay(if (dashOn) Hud.plan(dash, hudLayout, wide, anchor) else null, p, linesDp = linesDp)
 
             // Top left, one column of round buttons (spec section 03), so the
             // bottom edge belongs to the ribbon. Record first, where the spec
@@ -238,23 +270,20 @@ class MainActivity : ComponentActivity() {
                 RoundButton(if (rec.recording) "■" else "●", p, if (rec.recording) p.bad else p.accent) {
                     onRecordTap()
                 }
-                RoundButton(p.name.take(2), p) {
-                    val next = PALETTES[(PALETTES.indexOfFirst { it.key == theme } + 1) % PALETTES.size]
-                    theme = next.key
-                    prefs.edit().putString("theme", theme).apply()
-                    map.applyTheme(theme)
-                }
-                RoundButton(if (bike == "yellow") "Y" else "B", p) {
-                    bike = if (bike == "yellow") "black" else "yellow"
-                    prefs.edit().putString("bike", bike).apply()
-                    map.setBike(bike)
-                }
-                RoundButton(hudLayout.title.take(2), p) {
-                    val shown = Layout.entries.filter { it != Layout.OFF }
-                    hudLayout = shown[(shown.indexOf(hudLayout) + 1) % shown.size]
-                    prefs.edit().putString("hud", hudLayout.key).apply()
-                }
+                // Theme, bike and layout live in Settings now; the ☰ moves to the
+                // top of the column in minion 2's ButtonColumn reorder (spec 03).
+                RoundButton("☰", p) { settingsOpen = true }
                 if (locationGranted && !following) RoundButton(p, { map.follow() }) { FollowGlyph(p.accent) }
+            }
+
+            if (settingsOpen) {
+                SettingsPanel(
+                    p = p, prefs = settings, rev = settingsRev, sensors = sensorLines,
+                    fixAgeS = fixAge, fixAccM = Telemetry.fix.value?.takeIf { it.hasAccuracy() }?.accuracy?.toDouble(),
+                    version = runCatching { packageManager.getPackageInfo(packageName, 0).versionName }.getOrNull() ?: "",
+                    onChanged = ::applySetting,
+                    onClose = { settingsOpen = false },
+                )
             }
         }
     }

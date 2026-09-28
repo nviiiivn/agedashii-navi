@@ -1,0 +1,81 @@
+package online.iamprettyfamous.navi.prefs
+
+import android.content.Context
+import android.content.SharedPreferences
+
+/**
+ * Every preference in one place, each with the spec's default (§12), so no
+ * screen hard-codes one. The keys are the spec's own; they persist across
+ * restarts and app updates (SharedPreferences, file "navi").
+ *
+ * Units default to IMPERIAL and are not a courtesy: miles and feet are how
+ * she reads the road. Metric exists for completeness.
+ */
+class Prefs(context: Context) {
+    val raw: SharedPreferences = context.getSharedPreferences("navi", Context.MODE_PRIVATE)
+
+    var theme: String
+        get() = raw.getString("theme", "night") ?: "night"
+        set(v) = put("theme", v)
+
+    /** The marker colour, "yellow" or "black" - NOT which motorcycle. */
+    var bike: String
+        get() = raw.getString("bike", "yellow") ?: "yellow"
+        set(v) = put("bike", v)
+
+    /** Which motorcycle: cb750, ex250, other. */
+    var machine: String
+        get() = raw.getString("machine", "cb750") ?: "cb750"
+        set(v) = put("machine", v)
+
+    var imperial: Boolean
+        get() = raw.getString("units", "imperial") != "metric"
+        set(v) = put("units", if (v) "imperial" else "metric")
+
+    var buildings: Boolean
+        get() = raw.getBoolean("buildings", false)
+        set(v) = raw.edit().putBoolean("buildings", v).apply()
+
+    var northUp: Boolean
+        get() = raw.getBoolean("north_up", false)
+        set(v) = raw.edit().putBoolean("north_up", v).apply()
+
+    var keepAwake: Boolean
+        get() = raw.getBoolean("keep_awake", true)
+        set(v) = raw.edit().putBoolean("keep_awake", v).apply()
+
+    var sensorsOnDemand: Boolean
+        get() = raw.getBoolean("sensors_on_demand", true)
+        set(v) = raw.edit().putBoolean("sensors_on_demand", v).apply()
+
+    /** GPS fixes, and so log rows, per second: 1, 2, 5 or 10. */
+    var hz: Int
+        get() = raw.getInt("hz", 1).coerceIn(1, 10)
+        set(v) = raw.edit().putInt("hz", v).apply()
+
+    /** The ONLY on/off for the gauges (spec §12 `dash`). Off: no gauges and no gauge sensors. */
+    var dash: Boolean
+        get() = raw.getBoolean("dash", true)
+        set(v) = raw.edit().putBoolean("dash", v).apply()
+
+    /** The HUD layout key (the dash's Layout). */
+    var hud: String?
+        get() = raw.getString("hud", null)
+        set(v) = put("hud", v)
+
+    /** Landscape gauge side: right, left. */
+    var hudSide: String
+        get() = raw.getString("hud_side", "right") ?: "right"
+        set(v) = put("hud_side", v)
+
+    /** Portrait gauge edge: bottom, top. */
+    var hudEdge: String
+        get() = raw.getString("hud_edge", "bottom") ?: "bottom"
+        set(v) = put("hud_edge", v)
+
+    private fun put(key: String, v: String?) = raw.edit().putString(key, v).apply()
+
+    companion object {
+        val HZ_CHOICES = listOf(1, 2, 5, 10)
+    }
+}

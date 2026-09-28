@@ -93,6 +93,13 @@ object Telemetry {
     /** Whether a ride is being written, and how it is going. The ONLY source of that fact. */
     val rec: StateFlow<RecState> = _rec
 
+    /** One line of Settings' honest account: is it on this phone, is it running, when did it last report. */
+    data class SensorLine(val name: String, val present: Boolean, val hz: Int?, val lastSeenS: Double?, val note: String?)
+
+    private val _sensors = MutableStateFlow<List<SensorLine>>(emptyList())
+    /** What each motion sensor is actually doing, refreshed once a second while telemetry runs. */
+    val sensors: StateFlow<List<SensorLine>> = _sensors
+
     /** Told on the ride thread after every recorded row; the service updates its notification. */
     @Volatile var onRecordedRow: ((Ride) -> Unit)? = null
 
@@ -118,6 +125,8 @@ object Telemetry {
     private var dashChannels: Set<String>? = null
     private var onDemand = true
     private val subscribed = HashMap<Int, Int>()
+    private val lastEventBootS = HashMap<Int, Double>()
+    private var tick = 0
 
     // Elevation above MEAN SEA LEVEL (API 34+), and the climb since the ride began.
     // Raw GPS altitude is height above the WGS84 ellipsoid - about 32 m / 105 ft
@@ -213,6 +222,58 @@ object Telemetry {
         }
     }
 
+    /**
+     * Re-read the preferences Settings can change - machine, units, log rate,
+     * sensors on demand - and apply them now, not at the next start. Main thread.
+     */
+    fun refreshPrefs(context: Context) {
+        val prefs = context.applicationContext.getSharedPreferences("navi", Context.MODE_PRIVATE)
+        val m = prefs.getString("machine", "cb750") ?: "cb750"
+        val metric = prefs.getString("units", "imperial") == "metric"
+        val rate = prefs.getInt("hz", 1).coerceIn(1, 10)
+        val demand = prefs.getBoolean("sensors_on_demand", true)
+        ensureThread().post {
+            machine = m
+            imperial = !metric
+            onDemand = demand
+            if (rate != hz) {
+                hz = rate
+                if (listening) regps()
+            }
+            resubscribe()
+            publishSensors()
+        }
+    }
+
+    /** Ride thread. Ask for GPS again at the current rate. */
+    @SuppressLint("MissingPermission")
+    private fun regps() {
+        val lm = app.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+        lm.removeUpdates(gps)
+        try {
+            lm.requestLocationUpdates(LocationManager.GPS_PROVIDER, 1000L / hz, 0f, gps, handler!!.looper)
+        } catch (e: RuntimeException) {
+            Log.w(TAG, "no GPS updates: ${e.message}")
+        }
+    }
+
+    /** Ride thread. The honest account, from what the sensors have actually done. */
+    private fun publishSensors() {
+        if (!::app.isInitialized) return
+        val sm = app.getSystemService(Context.SENSOR_SERVICE) as SensorManager
+        val nowBootS = SystemClock.elapsedRealtimeNanos() / 1e9
+        val errors = motion.available().errors
+        _sensors.value = SENSORS.map { s ->
+            SensorLine(
+                name = s.name,
+                present = sm.getDefaultSensor(s.type) != null,
+                hz = subscribed[s.type]?.let { 1_000_000 / it },
+                lastSeenS = lastEventBootS[s.type]?.let { nowBootS - it },
+                note = errors[s.name],
+            )
+        }
+    }
+
     /** Publish the state of a recording that has ended, or was cut off. */
     fun publishEnded(state: RecState) {
         _rec.value = state
@@ -297,6 +358,7 @@ object Telemetry {
 
     private val sensorListener = object : SensorEventListener {
         override fun onSensorChanged(e: SensorEvent) {
+            lastEventBootS[e.sensor.type] = e.timestamp / 1e9
             val v = e.values
             when (e.sensor.type) {
                 Sensor.TYPE_ACCELEROMETER ->
@@ -317,6 +379,7 @@ object Telemetry {
     private val dashTick = object : Runnable {
         override fun run() {
             publishDash()
+            if (++tick % 5 == 0) publishSensors()
             handler?.postDelayed(this, DASH_EVERY_MS)
         }
     }
