@@ -21,7 +21,19 @@ data class Gpx(val name: String, val points: List<LatLon>)
  * `\s` mean what they meant there.
  */
 object Places {
-    private const val UNICODE = Pattern.UNICODE_CHARACTER_CLASS or Pattern.UNICODE_CASE
+    /**
+     * Android's regex (ICU) refuses UNICODE_CHARACTER_CLASS outright - the
+     * whole object failed to load there, and Where to crashed on its first
+     * keystroke (emulator, 2026-09-28) - while the JVM's `\d` and `\s` are
+     * ASCII without it. ICU's are Unicode already, so there the flag is simply
+     * not needed.
+     */
+    private val UNICODE: Int = try {
+        Pattern.compile("x", Pattern.UNICODE_CHARACTER_CLASS)
+        Pattern.UNICODE_CHARACTER_CLASS or Pattern.UNICODE_CASE
+    } catch (e: IllegalArgumentException) {
+        Pattern.UNICODE_CASE
+    }
 
     /** A decimal degree pair, with an optional sign and either separator. places.py:58. */
     private val PAIR: Pattern = Pattern.compile("""(-?\d{1,3}(?:\.\d+)?)\s*[, ]\s*(-?\d{1,3}(?:\.\d+)?)""", UNICODE)
