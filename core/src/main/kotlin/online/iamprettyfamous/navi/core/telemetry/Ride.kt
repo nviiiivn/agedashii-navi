@@ -452,6 +452,10 @@ class Ride(
         /** An extension tag this writes: ASCII only, which a strict parser - the dashboard's - accepts. */
         private val TAG = Regex("[A-Za-z_][A-Za-z0-9_]*")
 
+        // The minute-resolution default is telemetry.py's, kept so the port
+        // matches. CALLERS MUST PASS A NAME WITH SECONDS: the server keys one
+        // file per name, and two rides started in the same minute overwrote
+        // each other on the dashboard (live.py:219-227).
         private val NAME_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
         private val GPX_TIME: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss'Z'").withZone(ZoneOffset.UTC)
 
