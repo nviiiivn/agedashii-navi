@@ -113,6 +113,23 @@ class ExhaustListener(machine: String? = null, private val sampleRate: Int = Exh
         listening = "record" in lower && "stop" !in lower
     }
 
+    /**
+     * The phone's own voice is speaking: what the microphone hears now is the
+     * prompt, not the engine, and a spoken "turn left" has harmonics enough to
+     * pass for an exhaust note. Blank the reading, say why, and forget the
+     * window, so the next analysis is made from engine alone.
+     */
+    fun pausedForVoice() {
+        clearRpm()
+        loudnessDb = null
+        loudnessNorm = null
+        engineDb = null
+        engineNorm = null
+        bands = emptyList()
+        filled = 0
+        rpmRejected = Exhaust.REJECT_VOICE
+    }
+
     /** The recorder started. */
     fun started() {
         listening = true

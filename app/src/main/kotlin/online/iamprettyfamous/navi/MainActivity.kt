@@ -57,6 +57,7 @@ import online.iamprettyfamous.navi.ui.RoundButton
 import online.iamprettyfamous.navi.ui.Palette
 import online.iamprettyfamous.navi.ui.palette
 import online.iamprettyfamous.navi.routing.Navigator
+import online.iamprettyfamous.navi.voice.Voice
 import online.iamprettyfamous.navi.ui.PinBand
 import online.iamprettyfamous.navi.ui.RouteStrip
 import androidx.compose.foundation.layout.Arrangement
@@ -98,6 +99,7 @@ class MainActivity : ComponentActivity() {
             Changed.KEEP_AWAKE -> keepAwake(settings.keepAwake)
             Changed.HUD -> { hudLayout = Layout.of(settings.hud); dashOn = settings.dash }
             Changed.TELEMETRY -> Telemetry.refreshPrefs(this)
+            Changed.VOICE -> Voice.enabled = settings.voice
             Changed.MIC_ON -> micOn()
             Changed.MIC_OFF -> {
                 RideService.micWanted = false
@@ -237,6 +239,7 @@ class MainActivity : ComponentActivity() {
             }.onFailure { Log.w("NaviGuide", "bad $key extra '$spec': ${it.message}") }
         }
         if (intent?.getBooleanExtra("endroute", false) == true) Navigator.clear()
+        intent?.getStringExtra("say")?.let { Voice.say(it) }
         if (intent?.hasExtra("mic") == true) {
             applySetting(if (intent.getBooleanExtra("mic", false)) Changed.MIC_ON else Changed.MIC_OFF)
         }
@@ -277,6 +280,8 @@ class MainActivity : ComponentActivity() {
         if (locationGranted) map.enableLocation() else askLocation.launch(FINE_OR_COARSE)
 
         Router.load(this)
+        Voice.enabled = settings.voice
+        Voice.start(this)
         setContent { Ride() }
         // A ride Android cut off while the app was dead is found and reported here.
         RideService.recoverInterrupted(this)
@@ -319,6 +324,7 @@ class MainActivity : ComponentActivity() {
         val micState by Telemetry.mic.collectAsState()
         val lastFix by Telemetry.fix.collectAsState()
         val nav by Navigator.nav.collectAsState()
+        val voice by Voice.state.collectAsState()
         LaunchedEffect(nav.route) { map.showRoute(nav.route?.points) }
         LaunchedEffect(nav.dest, pin) { map.showMarks(nav.dest, pin) }
         // Routed: the offered pin has become the destination.
@@ -365,7 +371,12 @@ class MainActivity : ComponentActivity() {
                     {
                         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             banner?.let { TurnBannerView(it, p) }
-                            RouteStrip(nav, p, settings.imperial)
+                            RouteStrip(nav, p, settings.imperial,
+                                voiceWhy = when {
+                                    !settings.voice -> null
+                                    !voice.ready -> voice.why
+                                    else -> voice.failed.ifEmpty { null }
+                                })
                             pin?.let { at ->
                                 PinBand(at, nav, here, p, settings.imperial,
                                     onRoute = { Navigator.go(at, settings.imperial) },
@@ -404,7 +415,7 @@ class MainActivity : ComponentActivity() {
 
             if (settingsOpen) {
                 SettingsPanel(
-                    p = p, prefs = settings, rev = settingsRev, sensors = sensorLines, mic = micState,
+                    p = p, prefs = settings, rev = settingsRev, sensors = sensorLines, mic = micState, voice = voice,
                     fixAgeS = fixAge, fixAccM = lastFix?.takeIf { it.hasAccuracy() }?.accuracy?.toDouble(),
                     version = runCatching { packageManager.getPackageInfo(packageName, 0).versionName }.getOrNull() ?: "",
                     onChanged = ::applySetting,

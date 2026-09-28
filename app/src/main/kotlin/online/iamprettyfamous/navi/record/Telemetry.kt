@@ -28,6 +28,7 @@ import online.iamprettyfamous.navi.core.telemetry.Live
 import online.iamprettyfamous.navi.core.telemetry.Motion
 import online.iamprettyfamous.navi.core.telemetry.Ride
 import online.iamprettyfamous.navi.routing.Navigator
+import online.iamprettyfamous.navi.voice.Voice
 
 /**
  * The telemetry pipeline: GPS, five motion sensors and the core's maths, running
@@ -318,7 +319,7 @@ object Telemetry {
         ear = ExhaustListener(machine)
         ear.started()
         val ok = capture.start(
-            onChunk = { chunk, t -> handler?.post { if (micOn) ear.onPcm16(chunk, t) } },
+            onChunk = { chunk, t -> handler?.post { if (micOn) hear(chunk, t) } },
             onError = { why -> handler?.post { ear.error = why; publishMic() } },
         )
         if (!ok) {
@@ -328,6 +329,25 @@ object Telemetry {
         }
         publishMic()
     }
+
+    /**
+     * Ride thread. One chunk to the rev counter - unless the phone's own voice
+     * is speaking, or just was: then the mic hears the prompt, not the engine.
+     */
+    private fun hear(chunk: ByteArray, t: Double) {
+        if (Voice.quiet()) {
+            if (!voicePaused) {
+                voicePaused = true
+                ear.pausedForVoice()
+                publishMic()
+            }
+            return
+        }
+        voicePaused = false
+        ear.onPcm16(chunk, t)
+    }
+
+    private var voicePaused = false
 
     /** Ride thread. */
     private fun micOff() {

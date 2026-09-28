@@ -115,6 +115,23 @@ class ExhaustListenerTest {
     }
 
     @Test
+    fun `the voice speaking blanks the reading and the next one is made from engine alone`() {
+        ear.listening = true
+        ear.onSamples(note(4000.0), t = 1000.0)
+        assertNotNull(ear.rpmEst)
+        ear.pausedForVoice()
+        assertNull(ear.rpmEst)
+        assertNull(ear.loudnessDb)
+        assertEquals(Exhaust.REJECT_VOICE, ear.rpmRejected)
+        assertEquals(emptyMap(), ear.latest(), "no columns while paused, not the last figure")
+        // The window was forgotten: half a window after the pause is not enough.
+        ear.onSamples(note(4000.0, n = 1024), t = 1003.0)
+        assertNull(ear.rpmEst)
+        ear.onSamples(note(4000.0, n = 4096), t = 1003.5)
+        assertEquals(4000.0, ear.rpmEst!!, 250.0)
+    }
+
+    @Test
     fun `changing the bike forgets the continuity reference`() {
         // audio.py:385-392.
         ear.listening = true

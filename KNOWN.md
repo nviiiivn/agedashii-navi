@@ -113,3 +113,17 @@ agedashii:route-below puts it above them so no halo cuts the line.
 
 Closes when: a real ride follows a route on her phone and the prompts land
 where core's tests say they do.
+
+## Spoken turns have been checked by log, never heard
+
+The emulator runs -no-audio. What was seen (2026-09-28): the voice check threw
+out two English voices that were listed as installed and failed every prompt
+("Unable to open project file", error -4) and settled on en-us-x-sfg-local; a
+prompt holds GAIN_TRANSIENT_MAY_DUCK as USAGE_ASSISTANCE_NAVIGATION_GUIDANCE
+(dumpsys audio) and lets it go when done; a newer prompt cuts off the older;
+the rev counter says "paused while the voice speaks" and resumes after; a
+route speaks the Follower's own prompt. Not seen: her music actually ducking
+and coming back, and how loud any of it is in a helmet.
+
+Closes when: a prompt is heard on her phone over music, through whatever the
+helmet pairs to.

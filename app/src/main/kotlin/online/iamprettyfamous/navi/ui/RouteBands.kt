@@ -38,7 +38,7 @@ import online.iamprettyfamous.navi.routing.Navigator
  * for the whole route, not a moment.
  */
 @Composable
-fun RouteStrip(nav: Navigator.Nav, p: Palette, imperial: Boolean) {
+fun RouteStrip(nav: Navigator.Nav, p: Palette, imperial: Boolean, voiceWhy: String? = null) {
     val route = nav.route ?: return
     val left = Guidance.distanceText(nav.status?.leftM ?: route.distanceM, imperial)
     Card(p) {
@@ -50,6 +50,9 @@ fun RouteStrip(nav: Navigator.Nav, p: Palette, imperial: Boolean) {
                 p.warn, TypeScale.MID_SP, FontWeight.Bold, maxLines = 2)
         }
         if (nav.rerouteNote.isNotEmpty()) Line(nav.rerouteNote, p.warn, TypeScale.MID_SP, maxLines = 2)
+        // She switched spoken turns on and hears nothing: say why, here, not
+        // only in Settings.
+        voiceWhy?.let { Line("Not spoken: $it", p.warn, TypeScale.MID_SP, maxLines = 3) }
     }
 }
 

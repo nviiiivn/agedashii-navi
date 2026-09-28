@@ -40,6 +40,11 @@ class Prefs(context: Context) {
         get() = raw.getBoolean("north_up", false)
         set(v) = raw.edit().putBoolean("north_up", v).apply()
 
+    /** Spoken turns. On by default, as in the Flet app: the instruction she hears costs no glance. */
+    var voice: Boolean
+        get() = raw.getBoolean("voice", true)
+        set(v) = raw.edit().putBoolean("voice", v).apply()
+
     var keepAwake: Boolean
         get() = raw.getBoolean("keep_awake", true)
         set(v) = raw.edit().putBoolean("keep_awake", v).apply()

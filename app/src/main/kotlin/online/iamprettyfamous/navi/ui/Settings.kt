@@ -28,9 +28,10 @@ import online.iamprettyfamous.navi.core.bikes.Bikes
 import online.iamprettyfamous.navi.core.dash.Layout
 import online.iamprettyfamous.navi.prefs.Prefs
 import online.iamprettyfamous.navi.record.Telemetry
+import online.iamprettyfamous.navi.voice.Voice
 
 /** A setting that changed, so the Ride screen can apply it at once. */
-enum class Changed { THEME, BIKE, BUILDINGS, NORTH_UP, KEEP_AWAKE, HUD, TELEMETRY, MIC_ON, MIC_OFF }
+enum class Changed { THEME, BIKE, BUILDINGS, NORTH_UP, KEEP_AWAKE, HUD, TELEMETRY, MIC_ON, MIC_OFF, VOICE }
 
 /**
  * Settings: every preference that does something today, the honest account of
@@ -49,6 +50,7 @@ fun SettingsPanel(
     rev: Int,
     sensors: List<Telemetry.SensorLine>,
     mic: Telemetry.MicState,
+    voice: Voice.State,
     fixAgeS: Double?,
     fixAccM: Double?,
     version: String,
@@ -91,6 +93,9 @@ fun SettingsPanel(
             Choice("Screen", p, listOf("on" to "Stays on", "off" to "Sleeps as usual"), onOff(prefs.keepAwake)) {
                 prefs.keepAwake = it == "on"; onChanged(Changed.KEEP_AWAKE)
             }
+            Choice("Spoken turns", p, OFF_ON, onOff(prefs.voice)) {
+                prefs.voice = it == "on"; onChanged(Changed.VOICE)
+            }
 
             Heading("Gauges", p)
             Choice("Gauges", p, OFF_ON, onOff(prefs.dash)) {
@@ -127,6 +132,7 @@ fun SettingsPanel(
             if (sensors.isEmpty()) Text("Sensors: nothing running yet", p, size = 16, faint = true)
             for (s in sensors) Text(sensorLine(s), p, size = 16, faint = s.hz == null)
             Text(micAccount(mic), p, size = 16, faint = !mic.on)
+            Text(voiceAccount(voice, prefs.voice), p, size = 16, faint = !prefs.voice)
             Text("Recording runs every sensor at 50 per second, whatever this says.", p, size = 12, faint = true)
 
             Heading("About", p)
@@ -151,6 +157,14 @@ private fun sensorLine(s: Telemetry.SensorLine): String = when {
     s.hz == null -> "${label(s.name)}: off - no gauge on screen needs it"
     s.lastSeenS == null -> "${label(s.name)}: on at ${s.hz} / s, nothing received yet"
     else -> "${label(s.name)}: on at ${s.hz} / s, last reading %.1f s ago".format(s.lastSeenS)
+}
+
+/** The voice's line in the honest account. */
+fun voiceAccount(v: Voice.State, on: Boolean): String = when {
+    !on -> "Voice: off - turns are shown, not spoken"
+    v.ready && v.failed.isNotEmpty() -> "Voice: ${v.voice} - ${v.failed}"
+    v.ready -> "Voice: ${v.voice}"
+    else -> "Voice: ${v.why}"
 }
 
 /** The microphone's line in the honest account, and beside record while it listens. */

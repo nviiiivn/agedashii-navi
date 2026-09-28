@@ -11,6 +11,7 @@ import online.iamprettyfamous.navi.core.guidance.RerouteGate
 import online.iamprettyfamous.navi.core.guidance.Status
 import online.iamprettyfamous.navi.core.routing.Arrival
 import online.iamprettyfamous.navi.core.routing.ArrivalGap
+import online.iamprettyfamous.navi.voice.Voice
 
 /**
  * Following one route: the destination, the route to it, and the core's
@@ -105,6 +106,8 @@ object Navigator {
                 ask(p, dest, generation, first = false)
             }
             _nav.value = _nav.value.copy(status = status)
+            // The Follower decides what is due; each prompt comes once.
+            status.say?.let(Voice::say)
         }
     }
 
@@ -139,6 +142,9 @@ object Navigator {
             val status = here?.let { follower.update(it, null, now) }
             Log.i(TAG, "following: ${line.maneuvers.size} turns, reroutes=$reroutes, gap=${gap?.metres?.toInt()} m")
             _nav.value = Nav(dest = dest, route = line, status = status, gap = gap, reroutes = reroutes)
+            // The first update of a new route can already be inside a prompt band;
+            // the Follower counts it said, so it must be said here.
+            status?.say?.let(Voice::say)
         }
     }
 }

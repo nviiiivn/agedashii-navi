@@ -88,6 +88,7 @@ object Exhaust {
     const val REJECT_OUT_OF_RANGE = "outside this engine's rev range"
     const val REJECT_JUMP = "implausible jump from the last reading"
     const val REJECT_QUIET = "too quiet"
+    const val REJECT_VOICE = "paused while the voice speaks"
 
     /**
      * Signed 16-bit little-endian bytes to floats in -1.0..1.0. An odd trailing
