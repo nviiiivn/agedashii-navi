@@ -1,6 +1,9 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
+    // Test only: screenshots of the dash (recordRoborazziDebug). It adds tasks,
+    // not dependencies to the APK - checked with :app:dependencies.
+    alias(libs.plugins.roborazzi)
 }
 
 android {
@@ -28,6 +31,9 @@ android {
     }
 
     buildFeatures { compose = true }
+
+    // Robolectric needs the real resources to render Compose for the screenshots.
+    testOptions { unitTests.isIncludeAndroidResources = true }
 }
 
 dependencies {
@@ -44,4 +50,10 @@ dependencies {
     // The raw SDK, hosted in an AndroidView: its LocationComponent does GPS
     // follow and draws the bike, and pmtiles://file:// is documented for it.
     implementation(libs.maplibre.android)
+
+    // test only: none of these reach the APK.
+    testImplementation(libs.junit4)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.roborazzi)
+    testImplementation(libs.roborazzi.compose)
 }

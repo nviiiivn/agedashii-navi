@@ -20,6 +20,13 @@ valhalla-mobile = "0.6.3"
 # asserts this equals VALHALLA_TILES. The 0.6.3 -> 3.6.3 mapping was read from
 # the GitHub API by hand; bumping the binding means re-reading it.
 valhalla = "3.6.3"
+# Test only: screenshots of the dash on the JVM. Read from Maven Central
+# maven-metadata.xml <release> on 2026-09-27 (roborazzi and its plugin marker
+# 1.75.0, published 2026-09-21; robolectric 4.17, 2026-09-10; junit 4.13.2,
+# which Robolectric's runner needs).
+roborazzi = "1.75.0"
+robolectric = "4.17"
+junit4 = "4.13.2"
 
 [libraries]
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "core-ktx" }
@@ -33,8 +40,14 @@ maplibre-android = { module = "org.maplibre.gl:android-sdk", version.ref = "mapl
 valhalla-mobile = { module = "io.github.rallista:valhalla-mobile", version.ref = "valhalla-mobile" }
 junit-bom = { module = "org.junit:junit-bom", version.ref = "junit-bom" }
 junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher" }
+# test only
+roborazzi = { module = "io.github.takahirom.roborazzi:roborazzi", version.ref = "roborazzi" }
+roborazzi-compose = { module = "io.github.takahirom.roborazzi:roborazzi-compose", version.ref = "roborazzi" }
+robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }
+junit4 = { module = "junit:junit", version.ref = "junit4" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
+roborazzi = { id = "io.github.takahirom.roborazzi", version.ref = "roborazzi" }
