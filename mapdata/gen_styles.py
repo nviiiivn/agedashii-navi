@@ -74,6 +74,10 @@ STREET_SCALE = {"motorway": 1.00, "trunk": 1.00, "primary": 0.85,
 #: 2026-09-28. Adding a class? Ask which side of that sentence it is on.
 NAVIGABLE = ("motorway", "trunk", "primary", "secondary")
 
+#: Buildings against land, WCAG. Scenery: hidden by default (her call,
+#: 2026-09-28) and gated so that, switched on, they never compete with a road.
+BUILDINGS = 1.14
+
 #: theme.py:75-76 - "Direct sun, visor down. Maximum contrast, no mid-tones,
 #: and the heaviest text weight the widgets offer." The map follows: black
 #: streets, no fills but water, heaviest label weight, everything wider.
@@ -136,13 +140,35 @@ def derive(key, theme):
     # so the motorway sits 2% inside the route margin; the navigable/land floor
     # wins if the palette leaves no room (Day: route/land is only 5.23).
     route_land = contrast(route, land)
-    nav_floor = GATES["navigable/land"] * 1.005
+    street_src = mix(p["text"], route, ROAD_TINT)
+
+    # BUILDINGS (hidden by default, her switch). Switched on in town, a road's
+    # background is a building, not open land, so buildings are placed first
+    # and the navigable floor accounts for them.
+    #
+    # Where the palette has room on the far side of land from the roads - a
+    # light theme whose `surface` is lighter than its land, i.e. Day -
+    # buildings go that way, lighter than land while the roads are darker, and
+    # then they RAISE a road's contrast instead of eating it. Everywhere else
+    # they go toward text3, on the roads' own side, and then road/building =
+    # road/land / building/land exactly, so the floor is lifted by that factor.
+    # Without this the switch put navigable roads at 2.65:1 (shown failing,
+    # 2026-09-28); lifting alone could not work for Day, whose route is only
+    # 5.23:1 over land and lost its margin over the roads at every strength.
+    roads_lighter = luminance(street_src) > luminance(land)
+    away = p["surface"]
+    if (luminance(away) > luminance(land)) != roads_lighter and contrast(away, land) > 1.02:
+        c["building"] = solve_toward(land, away, BUILDINGS)
+        lift = 1.0
+    else:
+        c["building"] = solve_toward(land, p["text3"], BUILDINGS)
+        lift = contrast(c["building"], land)
+    nav_floor = GATES["navigable/land"] * lift * 1.005
     motorway_target = max(nav_floor, min(MOTORWAY_CAP, route_land / (ROUTE_MARGIN * 1.02)))
     # Every NAVIGABLE class is lifted to the 3:1 floor where its share of the
     # motorway's contrast would leave it below; the rest keep STREET_FLOOR.
     targets = {cls: max(nav_floor if cls in NAVIGABLE else STREET_FLOOR, motorway_target * s)
                for cls, s in STREET_SCALE.items()}
-    street_src = mix(p["text"], route, ROAD_TINT)
     for cls, tgt in targets.items():
         if sun:
             c[cls] = p["text"] if cls in ("motorway", "trunk", "primary", "secondary", "tertiary") else p["text3"]
@@ -152,7 +178,6 @@ def derive(key, theme):
     c["water"] = solve_toward(land, p["accent"], 1.25 if dark else 1.18)
     c["shore"] = p["text3"] if sun else None
     c["green"] = None if sun else solve_toward(land, p["good"], 1.10)
-    c["building"] = None if sun else solve_toward(land, p["text3"], 1.14)
     c["aeroway"] = solve_toward(land, p["text3"], 1.35)
     c["rail"] = p["text3"] if sun else solve_toward(land, p["text3"], 1.7)
     c["waterway"] = solve_toward(land, p["accent"], 1.6)
@@ -191,6 +216,14 @@ def gate(key, c):
         rows.append(("route/street", cls, f"WCAG {w:.2f} / dE00 {d:.1f}",
                      f">= {GATES['route/street WCAG']} or >= {GATES['route/street dE00']:.0f}",
                      w >= GATES["route/street WCAG"] or d >= GATES["route/street dE00"]))
+    # BUILDINGS ON (her switch; off by default). Buildings are scenery: they
+    # must never read as strongly as the faintest street, and a road she might
+    # be riding or turn onto must still clear 3:1 against a building fill, not
+    # only against open land - in town the building IS what is behind the road.
+    b = contrast(c["building"], c["land"])
+    rows.append(("building/land", "buildings", round(b, 2), f"<= {STREET_FLOOR}", b <= STREET_FLOOR))
+    for cls in NAVIGABLE:
+        add("navigable/bldg", cls, contrast(c[cls], c["building"]), GATES["navigable/land"])
     for lab, halo in (("label_major", "halo"), ("label_minor", "halo"), ("label_place", "halo"),
                       ("label_suburb", "halo"), ("label_water", "label_water_halo"),
                       ("label_ref", "label_ref_halo")):
@@ -269,6 +302,11 @@ def build(key, theme, schema, tiles_info):
                         "(null: add it on top). Street-name labels are BELOW that slot on purpose, "
                         "so no halo cuts the route.",
             },
+            # Her Settings switch: flip this layer's layout `visibility`
+            # between "none" (the default, what a fresh install draws) and
+            # "visible". Same id in every theme and both schemas.
+            "agedashii:buildings-layer": schemas.BUILDINGS_ID,
+            "agedashii:buildings-default": "none",
             "agedashii:road-tint": ROAD_TINT,
             "agedashii:palette": theme["palette"],
             "agedashii:tiles": tiles_info,

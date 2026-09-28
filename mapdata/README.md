@@ -92,10 +92,41 @@ labels over the route). 201/201 gate rows pass.
   (i) after 5 s. "© OpenMapTiles © OpenStreetMap contributors" 266 x 20 px
   (65% of the width), permanently.
 
+## Decided by nvii (2026-09-28)
+- PROTOMAPS, and no credit on her screen (personal, non-commercial, her own
+  phone). The licence files and this provenance stay in the repo as the
+  record; nothing grows into a credit strip in the UI.
+- BUILDINGS SHIP IN THE TILES, HIDDEN BY DEFAULT, with a Settings switch -
+  her improvement on our either/or. Final archive: out/protomaps.pmtiles,
+  57,925,216 B, md5 d36570443e5b, z0-14, layers buildings, earth, landuse,
+  places, roads, water.
+- The switch contract, the same in both apps: ONE layer, id `buildings`
+  (schemas.BUILDINGS_ID), in every theme, layout visibility "none" by default.
+  Flip visibility and nothing else. Also in the style metadata as
+  `agedashii:buildings-layer` / `agedashii:buildings-default`.
+- Buildings are gated as scenery: `building/land` <= 1.4 (never as strong as
+  the faintest street) and `navigable/bldg` >= 3.0 (a road she rides still
+  clears 3:1 with buildings behind it). Shown failing on the unfixed tree:
+  12 rows, down to 2.65:1. Fixed by placing buildings first - on the far side
+  of land from the roads where the palette has room (Day: white buildings,
+  which RAISE road contrast), otherwise lifting the navigable floor by the
+  buildings' own contrast. 241/241 rows pass.
+- Rendered: all 8 themes default (no buildings) and with the switch on via
+  setLayoutProperty("buildings", "visibility", "visible").
+
+## Known, not fixed
+- MapLibre GL JS 6.11.2 (the PREVIEW renderer) draws no buildings in downtown
+  Oakland at z16.0-16.5 (37.8030, -122.2712) with the switch on - 85 at
+  z15.99, 55 at z17, and 69 / 91 elsewhere at z16.2. No error raised; the 48
+  polygons are in the tile, byte-identical in the browser, and the raw
+  unstripped archive behaves the same. Not tested on MapLibre Native, which is
+  what the phone uses; minion 1 has the repro. Riding zoom is 16.5.
+- The FLET app cannot draw any of this. flet_map 0.86.5 has a raster TileLayer
+  only - no vector layer, no MapLibre style. Its tile choice must not claim
+  "vector" and its Buildings switch must stay hidden; the themed vector map is
+  the Kotlin app's.
+
 ## Open - for nvii via AGEDASHII, not decided here
-- Schema: Protomaps (smaller, CC0, credit folds away) vs OpenMapTiles
-  (permanent 65%-wide credit strip).
-- Buildings in or out (+20 MB Protomaps / +31 MB OpenMapTiles).
 - DECIDED (AGEDASHII, 2026-09-28), now in the gate as `NAVIGABLE`: the 3:1
   floor goes by NAVIGATIONAL LOAD. Motorway, trunk, primary and secondary -
   roads she rides or is told to turn onto - clear 3:1 in every theme (lowest

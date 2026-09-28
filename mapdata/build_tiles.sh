@@ -22,8 +22,13 @@
 #                     archive and the style both SAY 14, which is the point -
 #                     the raster map blanked at riding zoom because a layer
 #                     assumed z19 over an archive that stopped at z15.
-#   BUILDINGS=0       buildings cost about +20 MB (Protomaps) / +31 MB
-#                     (OpenMapTiles), measured by minion 4; BUILDINGS=1 keeps them.
+#   SCHEMAS=protomaps her decision (2026-09-28): smaller, design CC0, and no
+#                     credit strip on her screen. SCHEMAS=openmaptiles still
+#                     builds the other one for comparison.
+#   BUILDINGS=1       buildings ship IN the tiles (+20.2 MB, measured) so her
+#                     Settings switch can show them; the styles hide the layer
+#                     by default (id `buildings`, see schemas.BUILDINGS_ID).
+#                     BUILDINGS=0 strips them.
 set -euo pipefail
 
 HERE=$(cd "$(dirname "$0")" && pwd)
@@ -32,8 +37,8 @@ MAXZOOM=${MAXZOOM:-14}
 WORK=${WORK:-$HERE/work}
 OUT=${OUT:-$HERE/out}
 JAVA_MEM=${JAVA_MEM:-12g}
-SCHEMAS=${SCHEMAS:-protomaps openmaptiles}
-BUILDINGS=${BUILDINGS:-0}
+SCHEMAS=${SCHEMAS:-protomaps}
+BUILDINGS=${BUILDINGS:-1}
 PLANETILER_IMAGE=ghcr.io/onthegomap/planetiler@sha256:cf32202dbc001a9ab4bc11534b642b13de3798179817da8558e567a3d13dd403
 PROTOMAPS_REPO=https://github.com/protomaps/basemaps.git
 PROTOMAPS_COMMIT=42ffaaa4a85a41bfcb23e43cc0f5b492a5eca123

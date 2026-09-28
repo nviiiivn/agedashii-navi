@@ -16,6 +16,10 @@ Deliberately absent, for a map read at 60 mph:
 
 SOURCE = "bayarea"
 
+#: The one layer id the apps' "Buildings" switch flips (Flet and Kotlin both).
+#: A contract: renaming it breaks the switch in two apps at once.
+BUILDINGS_ID = "buildings"
+
 #: Road classes, least important first; the index is the line-sort-key so a
 #: motorway always draws over the street it crosses.
 CLASSES = ["track", "service", "minor", "tertiary", "secondary", "primary", "trunk", "motorway"]
@@ -158,8 +162,12 @@ class Schema:
         L.append(self._l("runway", "line", *self.runway(),
                          paint={"line-color": c["aeroway"],
                                 "line-width": ["interpolate", ["exponential", 1.5], ["zoom"], 11, 2, 14, 10, 18, 60]}))
-        if c["building"]:
-            L.append(self._l("building", "fill", *self.building(), paint={"fill-color": c["building"]}))
+        # ALWAYS emitted, in every theme, under one id, and HIDDEN: her choice is
+        # a Settings switch that flips this layer's `visibility`, default off
+        # (nvii, 2026-09-28). A theme without the layer would give the switch
+        # nothing to flip.
+        L.append(self._l(BUILDINGS_ID, "fill", *self.building(), paint={"fill-color": c["building"]},
+                         layout={"visibility": "none"}))
         L.append(self._l("rail", "line", *self.rail(),
                          paint={"line-color": c["rail"], "line-dasharray": [3, 2],
                                 "line-width": ["interpolate", ["linear"], ["zoom"], 11, 0.8, 16, 2]}))
