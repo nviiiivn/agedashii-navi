@@ -27,6 +27,7 @@ import online.iamprettyfamous.navi.core.telemetry.GpsClimb
 import online.iamprettyfamous.navi.core.telemetry.Live
 import online.iamprettyfamous.navi.core.telemetry.Motion
 import online.iamprettyfamous.navi.core.telemetry.Ride
+import online.iamprettyfamous.navi.routing.Navigator
 
 /**
  * The telemetry pipeline: GPS, five motion sensors and the core's maths, running
@@ -524,6 +525,9 @@ object Telemetry {
         val acc = if (fix.hasAccuracy()) fix.accuracy.toDouble() else null
         if (!Live.accepts(acc)) return
         _fix.value = fix
+        // Guidance follows the same accepted fixes, here rather than in the
+        // screen, so it keeps its place with the screen off.
+        Navigator.onFix(fix)
         val alt = if (fix.hasAltitude()) fix.altitude else null
         val gpsClimbMps = gpsClimb.add(alt, t)
         ride.addFix(

@@ -18,7 +18,16 @@ import org.maplibre.android.location.modes.RenderMode
 import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.MapView
 import org.maplibre.android.maps.Style
+import org.maplibre.android.style.expressions.Expression
+import org.maplibre.android.style.layers.CircleLayer
+import org.maplibre.android.style.layers.LineLayer
+import org.maplibre.android.style.layers.Property
+import org.maplibre.android.style.layers.PropertyFactory
+import org.maplibre.android.style.sources.GeoJsonSource
+import org.json.JSONArray
+import org.json.JSONObject
 import online.iamprettyfamous.navi.R
+import online.iamprettyfamous.navi.core.geo.LatLon
 import online.iamprettyfamous.navi.core.map.PmtilesHeader
 import online.iamprettyfamous.navi.core.map.StylePatch
 import java.io.File
@@ -68,6 +77,9 @@ class RideMapController(context: Context) {
     /** What stops the map drawing, in words she can act on; null when nothing. */
     var onProblem: (Problem?) -> Unit = {}
 
+    /** A long press on the map: the point she might want to go to. */
+    var onLongPress: (LatLon) -> Unit = {}
+
     fun onCreate(savedInstanceState: Bundle?, theme: String, bike: String, northUp: Boolean) {
         this.theme = theme
         this.bike = bike
@@ -90,6 +102,11 @@ class RideMapController(context: Context) {
         m.uiSettings.isAttributionEnabled = false
         m.uiSettings.isCompassEnabled = false
         m.setMaxZoomPreference(MAX_ZOOM)
+        // A LONG press, so a pan or a stray tap never offers a destination.
+        m.addOnMapLongClickListener { point ->
+            onLongPress(LatLon(point.latitude, point.longitude))
+            true
+        }
     }
 
     /** Bounds and a starting view from the archive, once it is known. */
@@ -133,12 +150,17 @@ class RideMapController(context: Context) {
         problem(if (own == null) Problem.STYLE_MISSING else null)
         val patched = StylePatch.realZoomRange(json, h.minZoom, h.maxZoom)
         for (change in patched.changes) Log.w(TAG, "$change (from the archive)")
-        buildingsLayer = runCatching {
-            org.json.JSONObject(json).optJSONObject("metadata")?.optString("agedashii:buildings-layer")
-        }.getOrNull()?.takeIf { it.isNotEmpty() }
+        val meta = runCatching { JSONObject(json).optJSONObject("metadata") }.getOrNull()
+        buildingsLayer = meta?.optString("agedashii:buildings-layer")?.takeIf { it.isNotEmpty() }
+        routeBelow = meta?.optString("agedashii:route-below")?.takeIf { it.isNotEmpty() }
+        routeLook = meta?.optJSONObject("agedashii:route")
+        colours = meta?.optJSONObject("agedashii:palette")
+        // The old style's sources go with it; nothing may be set on them meanwhile.
+        style = null
         m.setStyle(withBikes(Style.Builder().fromJson(patched.json))) { s ->
             style = s
             showBuildings(s)
+            addRouteLayers(s)
             if (locationWanted) activateLocation(s)
         }
     }
@@ -167,6 +189,113 @@ class RideMapController(context: Context) {
             ),
         )
     }
+
+    // ------------------------------------------------------------ the route
+
+    private var routeBelow: String? = null
+    private var routeLook: JSONObject? = null
+    private var colours: JSONObject? = null
+    private var routePoints: List<LatLon>? = null
+    private var dest: LatLon? = null
+    private var pin: LatLon? = null
+
+    /** Draws [points] as the route, or none. Kept across theme changes. */
+    fun showRoute(points: List<LatLon>?) {
+        routePoints = points
+        style?.getSourceAs<GeoJsonSource>(ROUTE_SOURCE)?.setGeoJson(lineJson(points))
+    }
+
+    /** The destination she has, and the point she long-pressed and has not chosen yet. */
+    fun showMarks(dest: LatLon?, pin: LatLon?) {
+        this.dest = dest
+        this.pin = pin
+        style?.getSourceAs<GeoJsonSource>(MARKS_SOURCE)?.setGeoJson(marksJson())
+    }
+
+    /**
+     * The route as the style asks for it (its metadata, agedashii:route, written
+     * by mapdata/gen_styles.py so the Flet app draws the same): a casing, then
+     * the line, both BELOW agedashii:route-below - the first label layer - so
+     * street names stay readable on top of the route and no halo cuts it.
+     */
+    private fun addRouteLayers(s: Style) {
+        val look = routeLook ?: JSONObject()
+        val width = look.optJSONArray("line-width")?.toString() ?: FALLBACK_WIDTH
+        // The casing is the line's own width plus casing-extra-px each side.
+        val casingWidth = widened(width, 2 * look.optDouble("casing-extra-px", 3.0))
+        val bg = colour("bg", "#06080b")
+        val lineColour = look.optString("line-color").ifEmpty { colour("road", "#39d0ff") }
+        val casingColour = look.optString("casing-color").ifEmpty { bg }
+        s.addSource(GeoJsonSource(ROUTE_SOURCE, lineJson(routePoints)))
+        s.addSource(GeoJsonSource(MARKS_SOURCE, marksJson()))
+        val casing = LineLayer(ROUTE_CASING, ROUTE_SOURCE).withProperties(
+            PropertyFactory.lineColor(casingColour),
+            PropertyFactory.lineWidth(Expression.Converter.convert(casingWidth)),
+            PropertyFactory.lineCap(Property.LINE_CAP_ROUND),
+            PropertyFactory.lineJoin(Property.LINE_JOIN_ROUND),
+        )
+        val line = LineLayer(ROUTE_LINE, ROUTE_SOURCE).withProperties(
+            PropertyFactory.lineColor(lineColour),
+            PropertyFactory.lineWidth(Expression.Converter.convert(width)),
+            PropertyFactory.lineCap(Property.LINE_CAP_ROUND),
+            PropertyFactory.lineJoin(Property.LINE_JOIN_ROUND),
+        )
+        val below = routeBelow?.takeIf { s.getLayer(it) != null }
+        if (below != null) {
+            s.addLayerBelow(casing, below)
+            s.addLayerBelow(line, below)
+        } else {
+            Log.w(TAG, "no layer '$routeBelow' to put the route under; drawing it on top")
+            s.addLayer(casing)
+            s.addLayer(line)
+        }
+        // The Flet app's markers: the destination in warn, the offered point in
+        // accent and bigger, so the two are never mistaken for each other.
+        val accent = colour("accent", "#39d0ff")
+        val warn = colour("warn", "#ffb020")
+        s.addLayer(
+            CircleLayer(MARKS_LAYER, MARKS_SOURCE).withProperties(
+                PropertyFactory.circleColor(byKind("\"$accent\"", "\"$warn\"")),
+                PropertyFactory.circleRadius(byKind("14", "11")),
+                PropertyFactory.circleStrokeColor(bg),
+                PropertyFactory.circleStrokeWidth(byKind("3", "2")),
+            ),
+        )
+    }
+
+    private fun colour(name: String, fallback: String): String =
+        colours?.optString(name)?.takeIf { it.isNotEmpty() } ?: fallback
+
+    private fun byKind(pin: String, dest: String): Expression =
+        Expression.Converter.convert("[\"match\",[\"get\",\"kind\"],\"pin\",$pin,$dest]")
+
+    private fun lineJson(points: List<LatLon>?): String {
+        if (points == null || points.size < 2) return EMPTY
+        val coords = points.joinToString(",") { "[${it.lon},${it.lat}]" }
+        return "{\"type\":\"FeatureCollection\",\"features\":[{\"type\":\"Feature\",\"properties\":{}," +
+            "\"geometry\":{\"type\":\"LineString\",\"coordinates\":[$coords]}}]}"
+    }
+
+    private fun marksJson(): String {
+        val marks = listOfNotNull(dest?.let { "dest" to it }, pin?.let { "pin" to it })
+        val features = marks.joinToString(",") { (kind, p) ->
+            "{\"type\":\"Feature\",\"properties\":{\"kind\":\"$kind\"}," +
+                "\"geometry\":{\"type\":\"Point\",\"coordinates\":[${p.lon},${p.lat}]}}"
+        }
+        return "{\"type\":\"FeatureCollection\",\"features\":[$features]}"
+    }
+
+    /**
+     * [width] with [extra] px added at every stop. A zoom expression may only be
+     * the top-level interpolate, so `["+", width, extra]` is refused; the stops
+     * themselves have to grow.
+     */
+    private fun widened(width: String, extra: Double): String = runCatching {
+        val a = JSONArray(width)
+        if (a.optString(0) != "interpolate") return@runCatching width
+        for (i in 4 until a.length() step 2) a.put(i, a.getDouble(i) + extra)
+        a.toString()
+    }.getOrDefault(width)
 
     private fun problem(p: Problem?) {
         lastProblem = p
@@ -288,6 +417,25 @@ class RideMapController(context: Context) {
 
     private var hadFix = false
 
+    private var topClearPx = 0.0
+
+    /**
+     * Keeps her bike out from under the turn banner: the camera centres in the
+     * map BELOW [px] from the top. In landscape the banner and the route line
+     * under it cover nearly half the screen, and the bike sat behind them.
+     */
+    fun setTopClear(px: Double) {
+        if (px == topClearPx) return
+        topClearPx = px
+        val m = map ?: return
+        val pad = doubleArrayOf(0.0, px, 0.0, 0.0)
+        if (locationActive && m.locationComponent.cameraMode != CameraMode.NONE) {
+            m.locationComponent.paddingWhileTracking(pad, 300L)
+        } else {
+            m.moveCamera(org.maplibre.android.camera.CameraUpdateFactory.paddingTo(pad))
+        }
+    }
+
     fun onStart() = mapView.onStart()
     fun onResume() = mapView.onResume()
     fun onPause() = mapView.onPause()
@@ -302,6 +450,13 @@ class RideMapController(context: Context) {
         // Vector tiles overzoom sharply past the archive's own maxzoom.
         const val MAX_ZOOM = 19.0
         const val RIDING_ZOOM = 16.5
+        const val ROUTE_SOURCE = "agedashii-route"
+        const val ROUTE_CASING = "agedashii-route-casing"
+        const val ROUTE_LINE = "agedashii-route-line"
+        const val MARKS_SOURCE = "agedashii-marks"
+        const val MARKS_LAYER = "agedashii-marks"
+        const val EMPTY = "{\"type\":\"FeatureCollection\",\"features\":[]}"
+        const val FALLBACK_WIDTH = "[\"interpolate\",[\"exponential\",1.5],[\"zoom\"],10,2.75,14,7.5,18,32.5]"
         val BIKES = mapOf("yellow" to R.drawable.bike_yellow, "black" to R.drawable.bike_black)
     }
 }

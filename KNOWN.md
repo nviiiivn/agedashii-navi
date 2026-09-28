@@ -94,3 +94,22 @@ Closes when: a recording of her bike at known revs sets `harmonic` and
 `calibratedFrom` in core/bikes/Bikes.kt (one profile change, nothing else), and
 the readout is checked against the bike's own tach at steady revs (phase 4's
 done-test: within ~5%).
+
+## Turn-by-turn has only been followed on the emulator, standing still
+
+Long-press, "Route here", the route drawn under the labels' slot, the banner,
+off-route and the re-route, "Route ends at ... from your pin", rotation and the
+two-tap End were all seen on emulator-5556 (2026-09-28). But `geo fix` reports
+speed 0, so every prompt band there is the crawl band: the 60/20/6 s timing at
+riding speed has never run outside core's tests.
+
+Starting more than 45 m from any road - a big parking lot - reads as off route:
+the Follower measures the fix against the line, and the line starts on the
+road. It re-routes every 12 s (RerouteGate) until she reaches the road, and says
+so. guidance.py behaves the same way; nothing here is new.
+
+Street-name labels draw under the route on purpose: the style's own
+agedashii:route-below puts it above them so no halo cuts the line.
+
+Closes when: a real ride follows a route on her phone and the prompts land
+where core's tests say they do.

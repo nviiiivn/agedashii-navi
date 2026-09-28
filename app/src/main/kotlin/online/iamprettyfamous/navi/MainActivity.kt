@@ -54,6 +54,15 @@ import online.iamprettyfamous.navi.ui.FollowGlyph
 import online.iamprettyfamous.navi.ui.RoundButton
 import online.iamprettyfamous.navi.ui.Palette
 import online.iamprettyfamous.navi.ui.palette
+import online.iamprettyfamous.navi.routing.Navigator
+import online.iamprettyfamous.navi.ui.PinBand
+import online.iamprettyfamous.navi.ui.RouteStrip
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.ui.platform.LocalDensity
 
 /**
  * Ride: the map, her bike, and for now the least chrome that proves phase 1 —
@@ -149,6 +158,28 @@ class MainActivity : ComponentActivity() {
     /** Set by the first tap on a running recording; a second tap within 3 s stops it. */
     private var stopArmedAt by mutableStateOf<Long?>(null)
 
+    /** The point she long-pressed, offered as a destination and not chosen yet. */
+    private var pin by mutableStateOf<LatLon?>(null)
+
+    /** The same two-tap guard for ending a route. */
+    private var endArmedAt by mutableStateOf<Long?>(null)
+
+    private fun onEndTap() {
+        val armed = endArmedAt
+        val now = SystemClock.elapsedRealtime()
+        if (armed != null && now - armed < STOP_CONFIRM_MS) {
+            endArmedAt = null
+            Navigator.clear()
+        } else {
+            endArmedAt = now
+        }
+    }
+
+    private fun cancelPin() {
+        pin?.let(Navigator::forget)
+        pin = null
+    }
+
     private fun onRecordTap() {
         val rec = RideService.state.value
         if (!rec.recording) {
@@ -195,6 +226,15 @@ class MainActivity : ComponentActivity() {
                 Router.route(LatLon(a[0], a[1]), LatLon(b[0], b[1]), settings.imperial) { }
             }.onFailure { Log.w("NaviRouter", "bad route extra '$spec': ${it.message}") }
         }
+        // Debug: "lat,lon" offers a pin as a long press would; routeto also routes to it.
+        for (key in listOf("pin", "routeto")) intent?.getStringExtra(key)?.let { spec ->
+            runCatching {
+                val (lat, lon) = spec.split(",").map(String::toDouble)
+                pin = LatLon(lat, lon)
+                if (key == "routeto") Navigator.go(LatLon(lat, lon), settings.imperial)
+            }.onFailure { Log.w("NaviGuide", "bad $key extra '$spec': ${it.message}") }
+        }
+        if (intent?.getBooleanExtra("endroute", false) == true) Navigator.clear()
         if (intent?.hasExtra("mic") == true) {
             applySetting(if (intent.getBooleanExtra("mic", false)) Changed.MIC_ON else Changed.MIC_OFF)
         }
@@ -224,6 +264,7 @@ class MainActivity : ComponentActivity() {
         map = RideMapController(this)
         map.onFollowingChanged = { following = it }
         map.onProblem = { problem = it }
+        map.onLongPress = { pin = it }
         map.onCreate(savedInstanceState, theme, bike, prefs.getBoolean("north_up", false))
         // Buildings: off unless she turns them on (Settings, when it exists).
         map.setBuildings(prefs.getBoolean("buildings", false))
@@ -265,6 +306,9 @@ class MainActivity : ComponentActivity() {
                 if (stopArmedAt?.let { SystemClock.elapsedRealtime() - it > STOP_CONFIRM_MS } == true) {
                     stopArmedAt = null
                 }
+                if (endArmedAt?.let { SystemClock.elapsedRealtime() - it > STOP_CONFIRM_MS } == true) {
+                    endArmedAt = null
+                }
                 delay(500)
             }
         }
@@ -272,7 +316,13 @@ class MainActivity : ComponentActivity() {
         val sensorLines by Telemetry.sensors.collectAsState()
         val micState by Telemetry.mic.collectAsState()
         val lastFix by Telemetry.fix.collectAsState()
+        val nav by Navigator.nav.collectAsState()
+        LaunchedEffect(nav.route) { map.showRoute(nav.route?.points) }
+        LaunchedEffect(nav.dest, pin) { map.showMarks(nav.dest, pin) }
+        // Routed: the offered pin has become the destination.
+        LaunchedEffect(nav.dest, nav.route) { if (nav.route != null && nav.dest == pin) pin = null }
         BackHandler(enabled = settingsOpen) { settingsOpen = false }
+        BackHandler(enabled = !settingsOpen && pin != null) { cancelPin() }
         Box(Modifier.fillMaxSize().background(p.bg)) {
             AndroidView(factory = { map.mapView }, modifier = Modifier.fillMaxSize())
 
@@ -286,12 +336,20 @@ class MainActivity : ComponentActivity() {
             }
             // How tall the lines beside record are, measured: the dash moves out from under them.
             var topStack by remember { mutableStateOf(TopStack()) }
+            // The camera centres below the banner, so the bike is never under it.
+            val density = LocalDensity.current
+            val safeTop = WindowInsets.safeDrawing.getTop(density)
+            LaunchedEffect(topStack, safeTop) {
+                map.setTopClear(if (topStack.banner) safeTop + topStack.clearDp * density.density.toDouble() else 0.0)
+            }
             HudOverlay(if (dashOn) Hud.plan(dash, hudLayout, wide, anchor) else null, p, top = topStack)
             // The turn banner, from the Follower's Status - the same turn the voice
             // announces, in the banner's own words (the voice's are hers). Null
             // until minion 1's Follower publishes it; then this line is the only
             // wiring left.
-            val banner: TurnBanner.Plan? = null
+            val banner = TurnBanner.plan(nav.status, settings.imperial, "your pin")
+            val here = lastFix?.let { LatLon(it.latitude, it.longitude) }
+            val top = banner != null || nav.route != null || pin != null
 
             // Top left, one column of round buttons (spec section 03), so the
             // bottom edge belongs to the ribbon: the menu first, record under it
@@ -301,7 +359,19 @@ class MainActivity : ComponentActivity() {
             // clears all of it through ButtonColumn.
             ButtonColumnLayout(
                 onTopStack = { topStack = it },
-                banner = banner?.let { plan -> { TurnBannerView(plan, p) } },
+                banner = if (!top) null else {
+                    {
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            banner?.let { TurnBannerView(it, p) }
+                            RouteStrip(nav, p, settings.imperial)
+                            pin?.let { at ->
+                                PinBand(at, nav, here, p, settings.imperial,
+                                    onRoute = { Navigator.go(at, settings.imperial) },
+                                    onCancel = ::cancelPin)
+                            }
+                        }
+                    }
+                },
                 lines = {
                     // Recording is shouted, not implied: the gauges show numbers either
                     // way, so whether a ride is being WRITTEN is this red-edged chip
@@ -312,12 +382,20 @@ class MainActivity : ComponentActivity() {
                     // The UI says when the mic listens (spec rule 5), and what it hears -
                     // including why there is no rpm, rather than a blank that looks broken.
                     if (micState.on || micState.error.isNotEmpty()) Chip(micAccount(micState), p)
+                    if (endArmedAt != null) Chip("Tap End again to end the route", p, edge = p.bad, ink = p.bad)
                     message(problem, locationGranted, fixAge)?.let { Chip(it, p) }
                 },
             ) {
                 RoundButton("☰", p) { settingsOpen = true }
                 RoundButton(if (rec.recording) "■" else "●", p, if (rec.recording) p.bad else p.accent) {
                     onRecordTap()
+                }
+                // Ending a route takes two taps, as stopping a recording does. Above
+                // follow, so follow is the one that comes and goes at the bottom.
+                if (nav.route != null) {
+                    RoundButton(if (endArmedAt != null) "End?" else "End", p, if (endArmedAt != null) p.bad else p.text2) {
+                        onEndTap()
+                    }
                 }
                 if (locationGranted && !following) RoundButton(p, { map.follow() }) { FollowGlyph(p.accent) }
             }
