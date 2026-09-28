@@ -138,6 +138,9 @@ object Gauges {
             "caption's total leaned on the zero; we draw no dot and a dash unless both axes are known",
         "climb" to "gauges.py is wrong here: with no climb rate it drew the level arrow and the word \"level\"; " +
             "we draw the resting dash and a dash for the word",
+        "altitude" to "gauges.py is wrong here: its bare \"ft\" was absolute barometric height, off about 8 m per hPa " +
+            "of weather, or ellipsoidal GPS height, about 105 ft low around the Bay; we show sea-level elevation " +
+            "labelled \"elev\", and the ribbon adds the climb since the ride started",
     )
 
     /** [rotationDeg] is null when the lean is unknown, and then nothing is drawn: see [PYTHON_WRONG]. */
@@ -305,9 +308,29 @@ object Gauges {
         role = leanRole(leanDeg),
     )
 
-    /** Altitude as the ribbon and corners show it: a number and its unit. */
-    fun altitude(altM: Double?, imperial: Boolean): Pair<String, String> =
-        (if (altM == null) DASH else whole(if (imperial) altM * FT_PER_M else altM)) to (if (imperial) "ft" else "m")
+    /** `f"{x:,.0f}"`: whole, with thousands commas - "1,240" reads as a height, "1240" as a code. */
+    fun grouped(x: Double): String {
+        val s = whole(x).let { if (it == "-0") "0" else it }
+        val digits = s.removePrefix("-")
+        val out = digits.reversed().chunked(3).joinToString(",").reversed()
+        return if (s.startsWith("-")) "-$out" else out
+    }
+
+    /**
+     * Elevation as the ribbon and corners show it: "1,240" and "ft elev". Sea
+     * level, and labelled so, because the Python's bare "ft" was absolute
+     * barometric or ellipsoidal height (see PYTHON_WRONG).
+     */
+    fun elevation(altM: Double?, imperial: Boolean): Pair<String, String> =
+        (if (altM == null) DASH else grouped(if (imperial) altM * FT_PER_M else altM)) to (if (imperial) "ft elev" else "m elev")
+
+    /** Height gained since the ride began, always signed: "+320" and "ft since start", or a dash. */
+    fun sinceStart(climbM: Double?, imperial: Boolean): Pair<String, String> {
+        val unit = if (imperial) "ft since start" else "m since start"
+        if (climbM == null) return DASH to unit
+        val n = grouped(if (imperial) climbM * FT_PER_M else climbM)
+        return (if (n.startsWith("-")) n else "+$n") to unit
+    }
 
     /** "28°", or a dash. */
     fun leanText(leanDeg: Double?): String = if (leanDeg == null) DASH else whole(abs(leanDeg)) + "°"

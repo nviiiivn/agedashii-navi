@@ -420,7 +420,8 @@ object Telemetry {
         _dash.value = DashState.build(
             row = ride.samples.lastOrNull(), motion = motion, gpsClimb = gpsClimb, ear = null,
             fixSpeedMs = f?.takeIf { it.hasSpeed() }?.speed?.toDouble(),
-            fixAltM = f?.takeIf { it.hasAltitude() }?.altitude,
+            mslAltM = elevationM(System.currentTimeMillis() / 1000.0),
+            climbSinceStartM = climbSinceStartM(),
             machine = machine, imperial = imperial, limit = SpeedLimit.NONE,
         )
     }

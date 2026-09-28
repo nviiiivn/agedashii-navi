@@ -20,8 +20,9 @@ class DashStateTest {
         climb: GpsClimb? = null,
         ear: ExhaustListener? = null,
         speed: Double? = null,
-        alt: Double? = null,
-    ) = DashState.build(row, motion, climb, ear, speed, alt, "cb750", true, SpeedLimit.NONE)
+        msl: Double? = null,
+        sinceStart: Double? = null,
+    ) = DashState.build(row, motion, climb, ear, speed, msl, sinceStart, "cb750", true, SpeedLimit.NONE)
 
     @Test
     fun `nothing known is nothing shown, in every layout`() {
@@ -70,18 +71,29 @@ class DashStateTest {
     }
 
     @Test
-    fun `the barometer wins for height and climb, the GPS stands in without one`() {
+    fun `height is sea-level elevation or nothing, and the barometer still wins the climb rate`() {
         val climb = GpsClimb()
         for (i in 0..30) climb.add(100.0 + i, t = 1000.0 + i)
-        val noBaro = build(climb = climb, alt = 130.0)
-        assertEquals(130.0, noBaro.altM)
-        assertEquals(climb.climbMps, noBaro.climbMps)
         val motion = Motion()
         motion.onBarometer(1013.25, t = 1000.0)
         motion.onBarometer(1013.25 * Math.pow(1.0 - 4.0 / 44330.0, 5.255), t = 1002.0)
-        val withBaro = build(motion = motion, climb = climb, alt = 130.0)
-        assertEquals(motion.altBaroM, withBaro.altM)
-        assertEquals(motion.climbMps, withBaro.climbMps)
+        // Neither the absolute barometric height nor the GPS's: sea level, or a dash.
+        assertNull(build(motion = motion, climb = climb).altM)
+        val state = build(motion = motion, climb = climb, msl = 44.1, sinceStart = 97.5)
+        assertEquals(44.1, state.altM)
+        assertEquals(97.5, state.climbSinceStartM)
+        assertEquals(motion.climbMps, state.climbMps)
+        assertEquals(climb.climbMps, build(climb = climb).climbMps)
+    }
+
+    @Test
+    fun `the ribbon says elev and the climb since the start, in feet by default`() {
+        val texts = Hud.plan(DashState(altM = 378.0, climbSinceStartM = 97.5), Layout.RIBBON)!!.texts()
+        assertTrue(texts.containsAll(listOf("1,240", "ft elev", "+320", "ft since start")), "$texts")
+        val metric = Hud.plan(DashState(imperial = false, altM = 378.0, climbSinceStartM = -12.0), Layout.RIBBON)!!.texts()
+        assertTrue(metric.containsAll(listOf("378", "m elev", "-12", "m since start")), "$metric")
+        val parked = Hud.plan(DashState(altM = 378.0), Layout.RIBBON)!!.texts()
+        assertTrue(parked.containsAll(listOf(Gauges.DASH, "ft since start")), "no ride, no start: $parked")
     }
 
     @Test

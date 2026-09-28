@@ -35,12 +35,19 @@ data class DashState(
     val gLat: Double? = null,
     val gLong: Double? = null,
     /**
-     * Barometric where the phone has a barometer, else the fix's. NOTE: the
-     * barometric figure is absolute from standard sea-level pressure (1013.25
-     * hPa), as the Python's was - about 8 m per hPa of weather, so it can sit
-     * a hundred metres off on a stormy day. The climb RATE is unaffected.
+     * Elevation above MEAN SEA LEVEL (Android 14's AltitudeConverter: the fix's
+     * height less the geoid), or null where the phone cannot compute it. Never
+     * the absolute barometric figure - off about 8 m per hPa of weather - and
+     * never the raw GPS height, which is ellipsoidal and about 32 m (105 ft) low
+     * around the Bay. The Python showed one or the other; see Gauges.PYTHON_WRONG.
      */
     val altM: Double? = null,
+    /**
+     * Height gained since the RIDE started, from the barometer's relative
+     * altitude (weather cancels over a ride), else the sea-level delta. Null
+     * when not recording: there is no start to measure from.
+     */
+    val climbSinceStartM: Double? = null,
     val climbMps: Double? = null,
     val rpm: Double? = null,
     /** Derived by [build] from speed, rpm and bike, never set on its own. */
@@ -60,6 +67,37 @@ data class DashState(
     /** The engine meter's peak, 0..1. */
     val levelPeak: Double? = null,
 ) {
+    /**
+     * What feeds each field, as ride channels (Channels.ORDER's names, plus
+     * alt_msl_m, which is in the JSONL log only). The dash's half of sensors on
+     * demand: Telemetry runs only the sensors behind the channels the visible
+     * gauges read, so a gauge reading a field whose sensor is off would FREEZE
+     * rather than blank. Every Hud item declares its fields (Item.reads), and
+     * HudChannelsTest proves no item reads a field it did not declare.
+     *
+     * lean, g_lat and g_long are GPS alone - speed and heading (Ride.kt) - not
+     * the gyroscope. The engine fields are the microphone's, not a sensor's.
+     */
+    enum class Field(val channels: Set<String>) {
+        SPEED(setOf("speed_ms")),
+        /** From routing, not a sensor. */
+        LIMIT(emptySet()),
+        LEAN(setOf("lean_deg")),
+        TILT(setOf("tilt_deg")),
+        PITCH(setOf("pitch_deg")),
+        G_LAT(setOf("g_lat")),
+        G_LONG(setOf("g_long")),
+        ALT(setOf("alt_msl_m")),
+        CLIMB_SINCE_START(setOf("alt_baro_m")),
+        CLIMB(setOf("climb_mps")),
+        RPM(setOf("rpm_est")),
+        GEAR(setOf("speed_ms", "rpm_est")),
+        SHIFT(setOf("speed_ms", "rpm_est")),
+        BANDS(setOf("engine_db")),
+        LEVEL(setOf("engine_db", "loudness_db")),
+        LEVEL_PEAK(setOf("engine_db")),
+    }
+
     companion object {
         /**
          * One snapshot from what the ride pipeline holds - ride.py `_hud_state()`,
@@ -77,7 +115,8 @@ data class DashState(
             gpsClimb: GpsClimb?,
             ear: ExhaustListener?,
             fixSpeedMs: Double?,
-            fixAltM: Double?,
+            mslAltM: Double?,
+            climbSinceStartM: Double?,
             machine: String?,
             imperial: Boolean,
             limit: SpeedLimit,
@@ -96,7 +135,8 @@ data class DashState(
                 pitchDeg = (calibrated["pitch_deg"] as? Number)?.toDouble(),
                 gLat = rowNumber("g_lat"),
                 gLong = rowNumber("g_long"),
-                altM = Climb.bestAltitude(motion?.altBaroM, fixAltM),
+                altM = mslAltM,
+                climbSinceStartM = climbSinceStartM,
                 climbMps = Climb.best(motion?.climbMps, gpsClimb?.climbMps),
                 rpm = rpm,
                 gear = gear,

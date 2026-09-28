@@ -69,7 +69,7 @@ class DashGoldenTest {
 
     @Test
     fun `every break from the golden says the Python is wrong, and there are no others`() {
-        assertEquals(setOf("horizon", "horizon_line", "g_ball", "climb"), Gauges.PYTHON_WRONG.keys)
+        assertEquals(setOf("horizon", "horizon_line", "g_ball", "climb", "altitude"), Gauges.PYTHON_WRONG.keys)
         for ((part, why) in Gauges.PYTHON_WRONG) assertTrue(why.startsWith("gauges.py is wrong here"), part)
     }
 
@@ -264,6 +264,23 @@ class DashGoldenTest {
         if (oneAxis != null && (state.gLat == null || state.gLong == null)) repeat(items.count { it is GBallItem }) {
             pythonWrong("g_ball")
             out[out.indexOf(Py.fixed(abs(oneAxis), 2) + " g")] = Gauges.DASH
+        }
+        for (item in items.filterIsInstance<Num>()) {
+            when (item.reads) {
+                setOf(DashState.Field.ALT) -> {
+                    pythonWrong("altitude")
+                    val alt = state.altM
+                    val pyValue = if (alt == null) Gauges.DASH else Gauges.whole(if (state.imperial) alt * Gauges.FT_PER_M else alt)
+                    out.remove(pyValue)
+                    out.remove(if (state.imperial) "ft" else "m")
+                    out += item.texts()
+                }
+                setOf(DashState.Field.CLIMB_SINCE_START) -> {
+                    pythonWrong("altitude")
+                    out += item.texts()
+                }
+                else -> {}
+            }
         }
         return out
     }

@@ -48,7 +48,7 @@ class DashScreenshotTest {
     /** 65 mph past a posted 55 (over is limit + 7), leaned into a right-hander, a shift due: every state lit at once. */
     private val riding = DashState(
         imperial = true, machine = "cb750", speedMs = 29.0, limit = SpeedLimit(55, LimitSource.POSTED, "primary"),
-        leanDeg = 24.0, tiltDeg = 24.0, pitchDeg = 4.0, gLat = 0.45, gLong = -0.3, altM = 152.0, climbMps = 1.2,
+        leanDeg = 24.0, tiltDeg = 24.0, pitchDeg = 4.0, gLat = 0.45, gLong = -0.3, altM = 378.0, climbSinceStartM = 97.5, climbMps = 1.2,
         rpm = 6200.0, gear = 4, shift = "up", bands = listOf("low" to 0.6, "mid" to 0.35, "high" to 0.15),
         levelDb = -18.0, levelPeak = -10.0,
     )

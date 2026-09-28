@@ -2,6 +2,7 @@ package online.iamprettyfamous.navi.core.dash
 
 import online.iamprettyfamous.navi.core.guidance.Guidance
 import online.iamprettyfamous.navi.core.guidance.LimitSource
+import online.iamprettyfamous.navi.core.dash.DashState.Field
 import online.iamprettyfamous.navi.core.theme.Role
 
 /**
@@ -41,50 +42,65 @@ enum class Anchor {
 /** The four type sizes, and nothing between them. */
 enum class Size { HUGE, BIG, MID, SMALL }
 
-/** One thing drawn in a HUD region. [texts] is every word it shows, for tests and for accessibility. */
+/**
+ * One thing drawn in a HUD region. [texts] is every word it shows, for tests
+ * and for accessibility. [reads] is every DashState field it draws from - a
+ * constructor argument with no default, so a new gauge cannot be written
+ * without saying what it reads; Hud.channels turns them into the sensors that
+ * must run, and HudChannelsTest proves the declarations are true.
+ */
 sealed interface Item {
+    val reads: Set<Field>
     fun texts(): List<String>
 }
 
 /** A number and its unit, the unit small on the baseline. */
-data class Num(val value: String, val unit: String, val size: Size, val role: Role) : Item {
+data class Num(val value: String, val unit: String, val size: Size, val role: Role, override val reads: Set<Field>) : Item {
     override fun texts() = listOf(value) + if (unit.isNotEmpty()) listOf(unit) else emptyList()
 }
 
 /** Speed and the limit that belongs with it. [limitSource] styles posted and typical apart. */
 data class SpeedBlock(val speed: Num, val limit: String, val limitSource: LimitSource) : Item {
+    override val reads get() = speed.reads + Field.LIMIT
     override fun texts() = speed.texts() + limit
 }
 
 data class GForceItem(val bars: Gauges.GForceBars, val widthDp: Int) : Item {
+    override val reads get() = setOf(Field.G_LAT, Field.G_LONG)
     override fun texts() = listOf("BRK", "ACC")
 }
 
 data class RpmItem(val line: Gauges.RpmLine, val widthDp: Int) : Item {
+    override val reads get() = setOf(Field.RPM, Field.SHIFT)
     override fun texts() = listOf(line.text)
 }
 
 data class GearItem(val badge: Gauges.GearBadge, val size: Size) : Item {
+    override val reads get() = setOf(Field.GEAR, Field.SHIFT)
     override fun texts() = listOf(badge.text)
 }
 
 data class HorizonItem(val horizon: Gauges.Horizon, val sizeDp: Int) : Item {
+    override val reads get() = setOf(Field.LEAN, Field.PITCH, Field.TILT)
     override fun texts() = listOf(horizon.caption)
 }
 
 data class GBallItem(val ball: Gauges.GBall, val sizeDp: Int) : Item {
+    override val reads get() = setOf(Field.G_LAT, Field.G_LONG)
     override fun texts() = listOf(ball.caption)
 }
 
 data class ClimbItem(val climb: Gauges.Climb) : Item {
+    override val reads get() = setOf(Field.ALT, Field.CLIMB)
     override fun texts() = listOf(climb.height, climb.detail, "altitude")
 }
 
-data class MeterItem(val meter: Gauges.Meter) : Item {
+data class MeterItem(val meter: Gauges.Meter, override val reads: Set<Field>) : Item {
     override fun texts() = listOf(meter.value, meter.label)
 }
 
 data class BandsItem(val bands: List<Gauges.Band>, val label: String) : Item {
+    override val reads get() = setOf(Field.BANDS)
     override fun texts() = bands.map { it.label } + label
 }
 
@@ -113,13 +129,16 @@ data class Hud(val layout: Layout, val anchor: Anchor, val wide: Boolean, val gr
                 Num(
                     Guidance.speedText(state.speedMs, state.imperial), Guidance.speedUnit(state.imperial), size,
                     if (Guidance.overLimit(state.speedMs, state.limit.mph)) DashColours.OVER_LIMIT else Role.TEXT,
+                    setOf(Field.SPEED, Field.LIMIT),
                 ),
                 limit = limitMph?.let { "limit $it" } ?: Gauges.DASH,
                 limitSource = state.limit.source,
             )
-            val leanNum = Num(Gauges.leanText(lean), "lean", Size.MID, Gauges.leanRole(lean))
-            val (altValue, altUnit) = Gauges.altitude(state.altM, state.imperial)
-            val alt = Num(altValue, altUnit, Size.MID, Role.TEXT)
+            val leanNum = Num(Gauges.leanText(lean), "lean", Size.MID, Gauges.leanRole(lean), setOf(Field.LEAN))
+            val (altValue, altUnit) = Gauges.elevation(state.altM, state.imperial)
+            val alt = Num(altValue, altUnit, Size.MID, Role.TEXT, setOf(Field.ALT))
+            val (sinceValue, sinceUnit) = Gauges.sinceStart(state.climbSinceStartM, state.imperial)
+            val sinceStart = Num(sinceValue, sinceUnit, Size.MID, Role.TEXT, setOf(Field.CLIMB_SINCE_START))
             fun rpm(width: Int) = RpmItem(Gauges.rpmLine(state.rpm, state.machine, hint), width)
             val gear = GearItem(Gauges.gearBadge(state.gear, hint), Size.MID)
             fun gForce(width: Int) = GForceItem(Gauges.gForceBars(state.gLat, state.gLong), width)
@@ -142,8 +161,8 @@ data class Hud(val layout: Layout, val anchor: Anchor, val wide: Boolean, val gr
                         Region.EDGE,
                         listOf(
                             speed(Size.BIG).speed,
-                            Num(limitMph?.toString() ?: Gauges.DASH, "lim", Size.MID, Role.TEXT),
-                            leanNum, gForce(72), rpm(90), gear, alt,
+                            Num(limitMph?.toString() ?: Gauges.DASH, "lim", Size.MID, Role.TEXT, setOf(Field.LIMIT)),
+                            leanNum, gForce(72), rpm(90), gear, alt, sinceStart,
                         ),
                         vertical = wide,
                     ),
@@ -171,9 +190,9 @@ data class Hud(val layout: Layout, val anchor: Anchor, val wide: Boolean, val gr
                             HorizonItem(Gauges.horizon(lean, state.pitchDeg, state.tiltDeg), 92),
                             GBallItem(Gauges.gBall(state.gLat, state.gLong), 92),
                             ClimbItem(Gauges.climb(state.altM, state.climbMps, state.imperial)),
-                            MeterItem(Gauges.meter(Gauges.rpmFraction(state.rpm, state.machine), null, "rpm est", state.rpm?.let { Gauges.whole(it) } ?: Gauges.DASH)),
+                            MeterItem(Gauges.meter(Gauges.rpmFraction(state.rpm, state.machine), null, "rpm est", state.rpm?.let { Gauges.whole(it) } ?: Gauges.DASH), setOf(Field.RPM)),
                             BandsItem(Gauges.bands(state.bands), "engine"),
-                            MeterItem(Gauges.meter(Gauges.loudnessNorm(state.levelDb), state.levelPeak, "level", state.levelDb?.let { Gauges.whole(it) + " dB" } ?: Gauges.DASH)),
+                            MeterItem(Gauges.meter(Gauges.loudnessNorm(state.levelDb), state.levelPeak, "level", state.levelDb?.let { Gauges.whole(it) + " dB" } ?: Gauges.DASH), setOf(Field.LEVEL, Field.LEVEL_PEAK)),
                         ),
                         vertical = false,
                     ),
@@ -185,6 +204,19 @@ data class Hud(val layout: Layout, val anchor: Anchor, val wide: Boolean, val gr
                 else -> anchor
             }
             return Hud(layout, edge, wide, groups)
+        }
+
+        /**
+         * The ride channels [layout] reads, in either orientation and at any
+         * anchor - for Telemetry's sensors on demand (minion 1): not recording,
+         * only the sensors behind these run. Empty when the dash is off.
+         */
+        fun channels(layout: Layout, dashOn: Boolean): Set<String> {
+            if (!dashOn) return emptySet()
+            return listOf(false, true)
+                .flatMap { wide -> Anchor.entries.mapNotNull { plan(DashState(), layout, wide, it) } }
+                .flatMap { it.groups }.flatMap { it.items }.flatMap { it.reads }.flatMap { it.channels }
+                .toSortedSet()
         }
     }
 }

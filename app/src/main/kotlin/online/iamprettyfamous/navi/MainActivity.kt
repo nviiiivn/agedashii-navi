@@ -181,6 +181,8 @@ class MainActivity : ComponentActivity() {
         val rec by RideService.state.collectAsState()
         // Built on the ride thread from every sensor (minion 1's Telemetry), recording or not.
         val dash by Telemetry.dash.collectAsState()
+        // Sensors on demand: not recording, only the sensors behind what this layout draws run.
+        LaunchedEffect(hudLayout) { Telemetry.setDashChannels(Hud.channels(hudLayout, dashOn = true)) }
         var nowMs by remember { mutableStateOf(System.currentTimeMillis()) }
         LaunchedEffect(Unit) {
             while (true) {
