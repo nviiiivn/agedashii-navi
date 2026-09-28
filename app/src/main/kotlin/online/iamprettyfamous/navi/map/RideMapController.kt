@@ -5,7 +5,6 @@ import android.content.Context
 import android.location.Location
 import android.os.Bundle
 import android.util.Log
-import android.view.Gravity
 import androidx.core.content.ContextCompat
 import org.maplibre.android.MapLibre
 import org.maplibre.android.camera.CameraPosition
@@ -33,7 +32,8 @@ import java.io.File
  */
 class RideMapController(context: Context) {
 
-    enum class Problem { NO_TILES, UNREADABLE_STORAGE, BAD_TILES, NO_STYLE }
+    /** STYLE_MISSING is the one that still draws a map: this theme's, no; Night's, yes. */
+    enum class Problem { NO_TILES, UNREADABLE_STORAGE, BAD_TILES, NO_STYLE, STYLE_MISSING }
 
     private val appContext = context.applicationContext
 
@@ -82,12 +82,12 @@ class RideMapController(context: Context) {
 
     private fun configure(m: MapLibreMap) {
         m.uiSettings.isLogoEnabled = false
-        // OSM's licence needs the credit reachable; the "i" button keeps it,
-        // top right, below the record row so a wide status line can't cover it.
-        m.uiSettings.isAttributionEnabled = true
-        m.uiSettings.attributionGravity = Gravity.TOP or Gravity.END
-        val dp = appContext.resources.displayMetrics.density
-        m.uiSettings.setAttributionMargins(0, (150 * dp).toInt(), (12 * dp).toInt(), 0)
+        // No credit button on the map: her decision, 2026-09-28 - "this is a
+        // personal project ... i don't want it on my screen". The credits are
+        // kept as a record (assets/styles/SOURCE.txt, the style's source
+        // attribution) and belong in Settings/About before this is ever shared
+        // beyond her own phones (KNOWN.md).
+        m.uiSettings.isAttributionEnabled = false
         m.uiSettings.isCompassEnabled = false
         m.setMaxZoomPreference(MAX_ZOOM)
     }
@@ -122,16 +122,50 @@ class RideMapController(context: Context) {
         }
         val h = header ?: PmtilesHeader.read(file)?.also { header = it } ?: return problem(Problem.BAD_TILES)
         placeCamera(m, h)
-        val json = MapStyles.load(appContext.assets, key, file)
+        // A theme with no map style still gets a map - Night's - but SAYS so. It
+        // used to swap silently, and a fallback nobody can see is
+        // indistinguishable from a feature that works: every theme "worked",
+        // drawing Night's map under Sunlight's chrome.
+        val own = MapStyles.load(appContext.assets, key, file)
+        val json = own
             ?: MapStyles.load(appContext.assets, "night", file)
             ?: return problem(Problem.NO_STYLE)
-        problem(null)
+        problem(if (own == null) Problem.STYLE_MISSING else null)
         val patched = StylePatch.realZoomRange(json, h.minZoom, h.maxZoom)
         for (change in patched.changes) Log.w(TAG, "$change (from the archive)")
+        buildingsLayer = runCatching {
+            org.json.JSONObject(json).optJSONObject("metadata")?.optString("agedashii:buildings-layer")
+        }.getOrNull()?.takeIf { it.isNotEmpty() }
         m.setStyle(withBikes(Style.Builder().fromJson(patched.json))) { s ->
             style = s
+            showBuildings(s)
             if (locationWanted) activateLocation(s)
         }
+    }
+
+    /**
+     * Buildings ship in the tiles as one layer, hidden by default in every
+     * style; this only flips its visibility - no second archive. Her idea: "can
+     * there be a turn off/on button?". The layer id comes from the style's own
+     * metadata (agedashii:buildings-layer) so the Flet app and this one flip
+     * the same thing.
+     */
+    fun setBuildings(on: Boolean) {
+        buildings = on
+        style?.let { showBuildings(it) }
+    }
+
+    private var buildings = false
+    private var buildingsLayer: String? = null
+
+    private fun showBuildings(s: Style) {
+        val id = buildingsLayer ?: return
+        s.getLayer(id)?.setProperties(
+            org.maplibre.android.style.layers.PropertyFactory.visibility(
+                if (buildings) org.maplibre.android.style.layers.Property.VISIBLE
+                else org.maplibre.android.style.layers.Property.NONE,
+            ),
+        )
     }
 
     private fun problem(p: Problem?) {
@@ -145,7 +179,10 @@ class RideMapController(context: Context) {
      * message showed changed nothing until a restart.
      */
     fun recheck() {
-        if (lastProblem != null && lastProblem != Problem.NO_STYLE) applyTheme(theme)
+        // Only the file problems can fix themselves while the app is away; the
+        // styles are inside the APK, so a missing one stays missing.
+        val p = lastProblem
+        if (p != null && p != Problem.NO_STYLE && p != Problem.STYLE_MISSING) applyTheme(theme)
     }
 
     /** Call once location permission is granted. Safe before the style loads. */

@@ -129,6 +129,11 @@ class MainActivity : ComponentActivity() {
      */
     private fun handleTestIntent(intent: Intent?) {
         if (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE == 0) return
+        if (intent?.hasExtra("buildings") == true) {
+            val on = intent.getBooleanExtra("buildings", false)
+            prefs.edit().putBoolean("buildings", on).apply()
+            map.setBuildings(on)
+        }
         if (intent?.hasExtra("record") != true) return
         val want = intent.getBooleanExtra("record", false)
         val rec = RideService.state.value.recording
@@ -155,6 +160,8 @@ class MainActivity : ComponentActivity() {
         map.onFollowingChanged = { following = it }
         map.onProblem = { problem = it }
         map.onCreate(savedInstanceState, theme, bike, prefs.getBoolean("north_up", false))
+        // Buildings: off unless she turns them on (Settings, when it exists).
+        map.setBuildings(prefs.getBoolean("buildings", false))
 
         locationGranted = FINE_OR_COARSE.any {
             ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED
@@ -284,6 +291,7 @@ class MainActivity : ComponentActivity() {
                 "Reinstall, open Navi once, then copy ${MapFiles.TILES_NAME} again"
         problem == Problem.BAD_TILES -> "${MapFiles.TILES_NAME} is not a readable PMTiles v3 archive"
         problem == Problem.NO_STYLE -> "This build has no map style"
+        problem == Problem.STYLE_MISSING -> "No ${palette(theme).name} map in this build — showing Night's"
         !granted -> "Location is off for Navi — no bike on the map"
         !Telemetry.hasGps(this) -> "This phone reports no GPS receiver"
         fixAge == null -> "Waiting for GPS"

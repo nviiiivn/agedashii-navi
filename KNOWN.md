@@ -50,3 +50,22 @@ pressure never changes, so that path is only tested on a real phone.
 
 Closes when: checked on her phone against a known height (a summit marker), and
 the Moto G's Android version is known (adb shell getprop ro.build.version.release).
+
+## No map credits on screen, by her decision - they must come back before sharing
+
+The OpenStreetMap (ODbL) credit is not on the map: nvii, 2026-09-28, "this is a
+personal project ... i don't want it on my screen". The credits are kept as a
+record (app/src/main/assets/styles/SOURCE.txt, glyphs/OFL-Archivo.txt, and the
+style's own source attribution) but are shown nowhere.
+
+Closes when: Settings/About shows them - required before the app goes to anyone
+beyond her own phones.
+
+## Buildings have no on-screen switch yet
+
+The buildings layer ships hidden (default off, her choice) and
+RideMapController.setBuildings() flips it, persisted as the "buildings" pref.
+There is no Settings screen yet, so she cannot turn it on; only a debug-build
+test intent can (`--ez buildings true`).
+
+Closes when: Settings has the toggle.

@@ -1,0 +1,7 @@
+The eight theme styles here are generated, not hand-written:
+  mapdata/gen_styles.py --schema protomaps (mapdata branch, commit 2363699)
+They pair with the tile archive protomaps.pmtiles, 57,925,216 bytes,
+md5 d36570443e5b67053206a210fd97cb7c, z0-14, Bay Area -122.70,37.15,-121.70,38.15,
+copied to the phone as files/map/bayarea.pmtiles. Style design: Protomaps
+basemaps, CC0. Map data: (c) OpenStreetMap contributors, ODbL.
+Glyphs in ../glyphs: Archivo, SIL Open Font License 1.1 (OFL-Archivo.txt).
