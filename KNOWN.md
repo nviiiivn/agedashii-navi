@@ -69,3 +69,17 @@ There is no Settings screen yet, so she cannot turn it on; only a debug-build
 test intent can (`--ez buildings true`).
 
 Closes when: Settings has the toggle.
+
+## Sunlight's warning colours clear their floor by 0.06 - check it outdoors
+
+Over a black Sunlight road the dash glass (0.92) measures #ebebeb on the
+emulator, which puts the over-limit red (bad) and warn at 7.06:1 against a
+7:1 floor. That is not a margin: a different panel, gamma or brightness curve
+can take it under. The other Sunlight roles have more room (accent 7.86, good
+8.05). DashOverMapTest proves the arithmetic over the shipped style; nothing
+has proved it on her screen in direct sun. Sunlight is also the theme minion
+3's map README flags for an outdoor check, for the same reason.
+
+Closes when: Sunlight is read on her phone outdoors, in sun, over a road - or
+the glass goes denser (0.95 gives bad 7.52, computed) if it is marginal there.
+

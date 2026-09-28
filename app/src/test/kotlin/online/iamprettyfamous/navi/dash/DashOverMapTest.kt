@@ -23,8 +23,14 @@ import java.io.File
  * that theme's glass. DashContrastTest measured area fills only, and on a real
  * screen Sunlight's black roads turned the glass #b8b8b8 grey under the
  * over-limit red (4.24:1). A style change that pulls a readout under its floor
- * now fails this build. Symbol layers (map labels) are left out: thin strokes
- * through the glass, and her call.
+ * now fails this build.
+ *
+ * Symbol layers - map LABELS - are left out ON PURPOSE (AGEDASHII's ruling,
+ * 2026-09-28). Counting them would take the glass to 0.86-0.92 in most themes,
+ * and the map would stop showing through: a dash she cannot see the road under
+ * is a worse instrument than one whose numbers sometimes sit on a thin label
+ * stroke. Labels are thin, sparse and move; the readout is fixed and constant.
+ * Do not "fix" this by counting them.
  */
 class DashOverMapTest {
     private val styles = File("src/main/assets/styles")

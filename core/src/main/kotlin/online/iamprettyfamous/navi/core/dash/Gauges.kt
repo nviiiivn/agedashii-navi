@@ -40,7 +40,8 @@ object DashColours {
      * screen, 2026-09-28: Sunlight's roads are black, its glass over one came out
      * #b8b8b8, and the over-limit red on it was 4.24:1 - under even the 4.5
      * floor. Day's warn and Pink's bad fell short the same way. Map labels
-     * through the glass are not counted: thin strokes, and her call.
+     * through the glass are not counted, on purpose: see DashOverMapTest.
+     * Sunlight's bad and warn clear 7 by only 0.06 - KNOWN.md.
      */
     private val GLASS_ALPHA_OVER: Map<String, Float> = mapOf("sunlight" to 0.92f, "day" to 0.78f, "pink" to 0.78f)
 
