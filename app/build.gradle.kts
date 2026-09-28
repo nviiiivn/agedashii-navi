@@ -21,8 +21,11 @@ android {
         targetSdk = 36
         versionCode = 1
         versionName = "0.1.0"
-        // Both phones are arm64; x86_64 is only for the emulator on Tower.
-        ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
+        // Both phones are arm64; x86_64 is only for the emulator on Tower, and
+        // -PnaviAbis=arm64-v8a leaves its 22 MB out of the APK she downloads.
+        ndk {
+            abiFilters += (providers.gradleProperty("naviAbis").orNull ?: "arm64-v8a,x86_64").split(",")
+        }
     }
 
     compileOptions {
