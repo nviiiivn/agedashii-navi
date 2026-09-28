@@ -70,6 +70,12 @@ object Router {
         }
     }
 
+    /** New tiles are in place (DataPack): drop the router reading the old ones and load again. */
+    fun reload(context: Context) {
+        handler.post { valhalla = null }
+        load(context)
+    }
+
     /** Route from [from] to [to]; [done] runs on the router thread with the route or the reason there is none. */
     fun route(from: LatLon, to: LatLon, imperial: Boolean, done: (RouteLine) -> Unit) {
         handler.post {

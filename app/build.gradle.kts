@@ -32,8 +32,23 @@ android {
 
     buildFeatures { compose = true }
 
+    // The map tiles are gzip'd inside the archive already; squeezing them again
+    // only slows the first-start unpack. The tar and the places list do shrink.
+    androidResources { noCompress += listOf("pmtiles") }
+
     // Robolectric needs the real resources to render Compose for the screenshots.
     testOptions { unitTests.isIncludeAndroidResources = true }
+}
+
+// Her map data INSIDE the APK, so the phone needs one download and no cable:
+// build with -PnaviData=<dir>, a directory holding data/ as
+// tools/make-datapack.py writes it (map, router tiles, places list and a
+// MANIFEST). 217 MB, never in git. Without the property the APK carries no
+// data and the app says what is missing, as before.
+providers.gradleProperty("naviData").orNull?.let { dir ->
+    androidComponents {
+        onVariants { variant -> variant.sources.assets?.addStaticSourceDirectory(dir) }
+    }
 }
 
 dependencies {
