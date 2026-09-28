@@ -39,4 +39,9 @@ dependencies {
     // foundation and ui only: no Material, the look is hers.
     implementation(libs.compose.foundation)
     implementation(libs.compose.ui)
+    implementation(libs.kotlinx.coroutines.android)
+
+    // The raw SDK, hosted in an AndroidView: its LocationComponent does GPS
+    // follow and draws the bike, and pmtiles://file:// is documented for it.
+    implementation(libs.maplibre.android)
 }

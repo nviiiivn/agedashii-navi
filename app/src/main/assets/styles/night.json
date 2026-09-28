@@ -1,0 +1,35 @@
+{
+  "version": 8,
+  "name": "night (placeholder until minion 4's styles land)",
+  "metadata": {"agedashii:route-below": "road-motorway"},
+  "sources": {
+    "omt": {"type": "vector", "url": "{TILES}", "maxzoom": 14}
+  },
+  "layers": [
+    {"id": "background", "type": "background", "paint": {"background-color": "#06080b"}},
+    {"id": "park", "type": "fill", "source": "omt", "source-layer": "park",
+     "paint": {"fill-color": "#0b1a14"}},
+    {"id": "landcover", "type": "fill", "source": "omt", "source-layer": "landcover",
+     "filter": ["match", ["get", "class"], ["wood", "grass", "farmland"], true, false],
+     "paint": {"fill-color": "#0a1510"}},
+    {"id": "water", "type": "fill", "source": "omt", "source-layer": "water",
+     "paint": {"fill-color": "#0d2733"}},
+    {"id": "waterway", "type": "line", "source": "omt", "source-layer": "waterway",
+     "paint": {"line-color": "#0d2733", "line-width": 1.5}},
+    {"id": "road-minor", "type": "line", "source": "omt", "source-layer": "transportation",
+     "filter": ["match", ["get", "class"], ["minor", "service", "track"], true, false],
+     "layout": {"line-cap": "round", "line-join": "round"},
+     "paint": {"line-color": "#1e2733",
+               "line-width": ["interpolate", ["exponential", 1.5], ["zoom"], 12, 0.5, 18, 10]}},
+    {"id": "road-major", "type": "line", "source": "omt", "source-layer": "transportation",
+     "filter": ["match", ["get", "class"], ["primary", "secondary", "tertiary"], true, false],
+     "layout": {"line-cap": "round", "line-join": "round"},
+     "paint": {"line-color": "#5f7183",
+               "line-width": ["interpolate", ["exponential", 1.5], ["zoom"], 9, 0.6, 18, 16]}},
+    {"id": "road-motorway", "type": "line", "source": "omt", "source-layer": "transportation",
+     "filter": ["match", ["get", "class"], ["motorway", "trunk"], true, false],
+     "layout": {"line-cap": "round", "line-join": "round"},
+     "paint": {"line-color": "#9fb0c3",
+               "line-width": ["interpolate", ["exponential", 1.5], ["zoom"], 8, 0.8, 18, 20]}}
+  ]
+}
