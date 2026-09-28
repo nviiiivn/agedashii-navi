@@ -147,7 +147,9 @@ object Themes {
     private fun luminance(c: Int): Double {
         fun channel(v: Int): Double {
             val s = v / 255.0
-            return if (s <= 0.03928) s / 12.92 else ((s + 0.055) / 1.055).pow(2.4)
+            // 0.04045 is the sRGB spec's threshold (WCAG 2.0 printed 0.03928); no
+            // 8-bit channel falls between the two, so the ratios are identical.
+            return if (s <= 0.04045) s / 12.92 else ((s + 0.055) / 1.055).pow(2.4)
         }
         return 0.2126 * channel(c shr 16 and 0xff) + 0.7152 * channel(c shr 8 and 0xff) + 0.0722 * channel(c and 0xff)
     }

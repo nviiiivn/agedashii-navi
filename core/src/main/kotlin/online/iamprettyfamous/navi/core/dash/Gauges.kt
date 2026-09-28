@@ -25,6 +25,14 @@ data class Paint(val role: Role, val alpha: Float = 1f)
  * the shift light, lean warming with the angle, and speed over the limit.
  */
 object DashColours {
+    /**
+     * The glass slab under floating gauges: the theme's bg at this opacity over
+     * the map. 0.72 is where tiles read as texture rather than detail; the
+     * contrast of every readout on it is asserted by DashContrastTest.
+     */
+    const val GLASS_ALPHA = 0.72f
+    const val GLASS_BORDER_ALPHA = 0.5f
+
     /** Sky: the one interactive colour, faint. Never an alarm, so allowed. */
     val HORIZON_SKY = Paint(Role.ACCENT, 0.22f)
 

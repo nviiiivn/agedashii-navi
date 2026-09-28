@@ -38,6 +38,13 @@ import kotlinx.coroutines.delay
 import online.iamprettyfamous.navi.map.MapFiles
 import online.iamprettyfamous.navi.map.RideMapController
 import online.iamprettyfamous.navi.map.RideMapController.Problem
+import android.content.res.Configuration
+import androidx.compose.ui.platform.LocalConfiguration
+import online.iamprettyfamous.navi.core.dash.Anchor
+import online.iamprettyfamous.navi.core.dash.DashState
+import online.iamprettyfamous.navi.core.dash.Hud
+import online.iamprettyfamous.navi.core.dash.Layout
+import online.iamprettyfamous.navi.dash.HudOverlay
 import online.iamprettyfamous.navi.sensors.GpsSource
 import online.iamprettyfamous.navi.ui.PALETTES
 import online.iamprettyfamous.navi.ui.Palette
@@ -59,6 +66,14 @@ class MainActivity : ComponentActivity() {
     private var problem by mutableStateOf<Problem?>(null)
     private var locationGranted by mutableStateOf(false)
 
+    /**
+     * What the dash draws. Until the phase 3 ride service publishes the full
+     * DashState (agreed with minion 1), only what a bare fix knows - speed and
+     * altitude - and a dash for everything else.
+     */
+    private var dash by mutableStateOf(DashState())
+    private var hudLayout by mutableStateOf(Layout.DEFAULT)
+
     private val askLocation =
         registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
             locationGranted = result.values.any { it }
@@ -69,7 +84,17 @@ class MainActivity : ComponentActivity() {
         }
 
     private fun startGps() {
-        if (locationGranted) gps.start(FIX_INTERVAL_MS) { map.showFix(it) }
+        if (locationGranted) {
+            gps.start(FIX_INTERVAL_MS) { fix ->
+                map.showFix(fix)
+                dash = DashState(
+                    imperial = prefs.getString("units", "imperial") != "metric",
+                    machine = prefs.getString("machine", "cb750"),
+                    speedMs = if (fix.hasSpeed()) fix.speed.toDouble() else null,
+                    altM = if (fix.hasAltitude()) fix.altitude else null,
+                )
+            }
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -79,6 +104,7 @@ class MainActivity : ComponentActivity() {
 
         theme = prefs.getString("theme", "night") ?: "night"
         bike = prefs.getString("bike", "yellow") ?: "yellow"
+        hudLayout = Layout.of(prefs.getString("hud", Layout.DEFAULT.key))
 
         gps = GpsSource(this)
         map = RideMapController(this)
@@ -107,6 +133,16 @@ class MainActivity : ComponentActivity() {
         Box(Modifier.fillMaxSize().background(p.bg)) {
             AndroidView(factory = { map.mapView }, modifier = Modifier.fillMaxSize())
 
+            // The dash over the map. Landscape puts the gauges down her chosen
+            // side (right by default), portrait along her chosen edge (bottom).
+            val wide = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+            val anchor = if (wide) {
+                if (prefs.getString("hud_side", "right") == "left") Anchor.LEFT else Anchor.RIGHT
+            } else {
+                if (prefs.getString("hud_edge", "bottom") == "top") Anchor.TOP else Anchor.BOTTOM
+            }
+            HudOverlay(Hud.plan(dash, hudLayout, wide, anchor), p)
+
             Column(
                 Modifier.align(Alignment.TopCenter).safeDrawingPadding().padding(12.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -115,8 +151,11 @@ class MainActivity : ComponentActivity() {
                 message(problem, locationGranted, fixAge)?.let { Chip(it, p) }
             }
 
+            // One aligned column of round buttons, top left (spec section 03), so
+            // the bottom edge belongs to the ribbon. Theme, bike and layout are
+            // temporary until Settings exists.
             Column(
-                Modifier.align(Alignment.BottomStart).safeDrawingPadding().padding(16.dp),
+                Modifier.align(Alignment.TopStart).safeDrawingPadding().padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 RoundButton(p.name.take(2), p) {
@@ -130,12 +169,12 @@ class MainActivity : ComponentActivity() {
                     prefs.edit().putString("bike", bike).apply()
                     map.setBike(bike)
                 }
-            }
-
-            if (locationGranted && !following) {
-                Box(Modifier.align(Alignment.BottomEnd).safeDrawingPadding().padding(16.dp)) {
-                    RoundButton("◎", p) { map.follow() }
+                RoundButton(hudLayout.title.take(2), p) {
+                    val shown = Layout.entries.filter { it != Layout.OFF }
+                    hudLayout = shown[(shown.indexOf(hudLayout) + 1) % shown.size]
+                    prefs.edit().putString("hud", hudLayout.key).apply()
                 }
+                if (locationGranted && !following) RoundButton("◎", p) { map.follow() }
             }
         }
     }
