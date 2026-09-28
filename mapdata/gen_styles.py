@@ -15,8 +15,11 @@ target contrast against the land that leaves room for the route above it.
 
 GATES - the build writes nothing and exits 1 if any of these fail, per theme:
   route/land      the route against land                  WCAG >= 4.5
-  major/land      motorway and trunk against land         WCAG >= 3.0  (WCAG 2.1 SC 1.4.11)
+  navigable/land  motorway, trunk, primary, secondary     WCAG >= 3.0  (WCAG 2.1 SC 1.4.11)
   street/land     every other drawn street class          WCAG >= 1.4
+Which side of 3.0 a road class sits on is decided by NAVIGATIONAL LOAD (see
+NAVIGABLE): a road she might ride on or be told to turn onto must be legible;
+a road that is only there so the map looks like a place need not be.
   route/street    the route against every street class    WCAG >= 1.7 or CIEDE2000 >= 20
   label/halo      every label against its halo            WCAG >= 4.5  (WCAG 2.1 SC 1.4.3)
   water/land      water against land                      CIEDE2000 >= 4
@@ -59,6 +62,18 @@ STREET_SCALE = {"motorway": 1.00, "trunk": 1.00, "primary": 0.85,
                 "secondary": 0.72, "tertiary": 0.64, "minor": 0.54,
                 "service": 0.42, "track": 0.42}
 
+#: THE RULE for the 3:1 floor is NAVIGATIONAL LOAD, not road size. A class is in
+#: here if she might be riding on it or be told to turn onto it; then it must
+#: clear WCAG 1.4.11's 3:1 against land in every theme. A class that is only
+#: there so the map looks like a place stays out, and gets only STREET_FLOOR -
+#: those are what the route and the majors are meant to dominate.
+#:
+#: Secondary is IN on purpose: around the Bay it is frequently the actual ride
+#: (Skyline, Grizzly Peak), not background. It measured 2.17 in Day, Red night
+#: and Pink before this rule, and primary 2.58 in Day. AGEDASHII's ruling,
+#: 2026-09-28. Adding a class? Ask which side of that sentence it is on.
+NAVIGABLE = ("motorway", "trunk", "primary", "secondary")
+
 #: theme.py:75-76 - "Direct sun, visor down. Maximum contrast, no mid-tones,
 #: and the heaviest text weight the widgets offer." The map follows: black
 #: streets, no fills but water, heaviest label weight, everything wider.
@@ -70,9 +85,17 @@ RED_ONLY = {"redshift"}
 FONT = {"medium": "Archivo-Medium", "semibold": "Archivo-SemiBold",
         "heavy": "Archivo-ExtraBold"}
 
-GATES = {"route/land": 4.5, "major/land": 3.0, "street/land": STREET_FLOOR,
+GATES = {"route/land": 4.5, "navigable/land": 3.0, "street/land": STREET_FLOOR,
          "route/street WCAG": ROUTE_MARGIN, "route/street dE00": 20.0,
          "label/halo": 4.5, "water/land dE00": 4.0}
+#: Sunlight's labels answer to WCAG AAA (SC 1.4.6, 7:1), the same bar the
+#: dash holds its readouts to in that theme - one set of thresholds across the
+#: map and the chrome, agreed with the dash (minion 2).
+SUN_LABEL = 7.0
+
+
+def label_need(key):
+    return SUN_LABEL if key in MAX_CONTRAST else GATES["label/halo"]
 
 
 def solve_toward(land, src, target):
@@ -110,12 +133,15 @@ def derive(key, theme):
     sun = key in MAX_CONTRAST
 
     # route/street = route/land / street/land exactly (luminance ratios chain),
-    # so the motorway sits 2% inside the route margin; the major/land floor
+    # so the motorway sits 2% inside the route margin; the navigable/land floor
     # wins if the palette leaves no room (Day: route/land is only 5.23).
     route_land = contrast(route, land)
-    motorway_target = max(GATES["major/land"] * 1.005,
-                          min(MOTORWAY_CAP, route_land / (ROUTE_MARGIN * 1.02)))
-    targets = {cls: max(STREET_FLOOR, motorway_target * s) for cls, s in STREET_SCALE.items()}
+    nav_floor = GATES["navigable/land"] * 1.005
+    motorway_target = max(nav_floor, min(MOTORWAY_CAP, route_land / (ROUTE_MARGIN * 1.02)))
+    # Every NAVIGABLE class is lifted to the 3:1 floor where its share of the
+    # motorway's contrast would leave it below; the rest keep STREET_FLOOR.
+    targets = {cls: max(nav_floor if cls in NAVIGABLE else STREET_FLOOR, motorway_target * s)
+               for cls, s in STREET_SCALE.items()}
     street_src = mix(p["text"], route, ROAD_TINT)
     for cls, tgt in targets.items():
         if sun:
@@ -132,17 +158,19 @@ def derive(key, theme):
     c["waterway"] = solve_toward(land, p["accent"], 1.6)
 
     halo = land
+    need = label_need(key)
     c["halo"] = halo
-    c["label_major"] = readable([p["text"]], halo)
-    c["label_minor"] = readable([p["text2"], p["text"]], halo)
-    c["label_place"] = readable([p["text"]], halo)
-    c["label_suburb"] = readable([p["text2"], p["text"]], halo)
+    c["label_major"] = readable([p["text"]], halo, need)
+    c["label_minor"] = readable([p["text2"], p["text"]], halo, need)
+    c["label_place"] = readable([p["text"]], halo, need)
+    c["label_suburb"] = readable([p["text2"], p["text"]], halo, need)
     c["label_water_halo"] = c["water"]
-    c["label_water"] = readable([mix(p["text3"], p["accent"], 0.4), p["text2"], p["text"]], c["water"])
+    c["label_water"] = readable([mix(p["text3"], p["accent"], 0.4), p["text2"], p["text"]],
+                                c["water"], need)
     # Ref labels ("I-880") sit on the motorway itself, but a halo in the
     # motorway's mid-tone failed label/halo in six themes; the land halo cuts
     # a clean gap in the line instead.
-    c["label_ref"] = readable([p["text"]], halo)
+    c["label_ref"] = readable([p["text"]], halo, need)
     c["label_ref_halo"] = halo
     return c, {"route_land": route_land, "street_targets": targets}
 
@@ -156,7 +184,7 @@ def gate(key, c):
 
     add("route/land", "route", contrast(c["route"], c["land"]), GATES["route/land"])
     for cls in STREET_SCALE:
-        check = "major/land" if cls in ("motorway", "trunk") else "street/land"
+        check = "navigable/land" if cls in NAVIGABLE else "street/land"
         add(check, cls, contrast(c[cls], c["land"]), GATES[check])
     for cls in STREET_SCALE:
         w, d = contrast(c["route"], c[cls]), delta_e2000(c["route"], c[cls])
@@ -166,7 +194,7 @@ def gate(key, c):
     for lab, halo in (("label_major", "halo"), ("label_minor", "halo"), ("label_place", "halo"),
                       ("label_suburb", "halo"), ("label_water", "label_water_halo"),
                       ("label_ref", "label_ref_halo")):
-        add("label/halo", lab, contrast(c[lab], c[halo]), GATES["label/halo"])
+        add("label/halo", lab, contrast(c[lab], c[halo]), label_need(key))
     add("water/land dE00", "water", delta_e2000(c["water"], c["land"]), GATES["water/land dE00"])
     return rows
 
@@ -272,7 +300,22 @@ def main():
     ap.add_argument("--report", action="store_true", help="print the gate tables, write nothing")
     ap.add_argument("--sync-from", metavar="THEME_PY")
     ap.add_argument("--check-sync", metavar="THEME_PY", help="exit 1 if themes.json differs from theme.py")
+    ap.add_argument("--list-layers", action="store_true",
+                    help="print the source-layers the styles draw, comma-separated, and exit - "
+                         "build_tiles.sh keeps exactly these and strips the rest")
     a = ap.parse_args()
+
+    if a.list_layers:
+        themes = json.loads(pathlib.Path(a.themes).read_text())["themes"]
+        schema = schemas.ADAPTERS[a.schema]
+        used = set()
+        for key, theme in themes.items():
+            c, _numbers = derive(key, theme)
+            sun = key in MAX_CONTRAST
+            used |= {l["source-layer"] for l in schema.layers(c, FONT, wide=1.3 if sun else 1.0, sun=sun)
+                     if "source-layer" in l}
+        print(",".join(sorted(used)))
+        return
 
     if a.sync_from:
         pathlib.Path(a.themes).write_text(json.dumps(sync_from(a.sync_from), indent=2) + "\n")

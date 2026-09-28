@@ -257,10 +257,16 @@ class OpenMapTiles(Schema):
 
     def ref_label(self):
         net, ref = ["get", "network"], ["get", "ref"]
+        # OpenMapTiles carries the OSM ref as tagged, and OSM is not consistent:
+        # at z14 859 state routes are bare ("61") and 18 already say "CA 61"
+        # (surveyed from the built archive, 2026-09-27). Prefixing all of them
+        # drew "CA CA 61" on the first preview. Prefix only a ref that starts
+        # with a digit; one that already names its network is left alone.
+        bare = ["in", ["slice", ref, 0, 1], "0123456789"]
         text = ["case",
-                ["==", net, "us-interstate"], ["concat", "I-", ref],
-                ["==", net, "us-highway"], ["concat", "US ", ref],
-                ["==", net, "us-state"], ["concat", "CA ", ref], ref]
+                ["all", ["==", net, "us-interstate"], bare], ["concat", "I-", ref],
+                ["all", ["==", net, "us-highway"], bare], ["concat", "US ", ref],
+                ["all", ["==", net, "us-state"], bare], ["concat", "CA ", ref], ref]
         return ("transportation_name", 10,
                 ["all", ["in", ["get", "class"], ["literal", ["motorway", "trunk", "primary"]]], ["has", "ref"]],
                 text)
