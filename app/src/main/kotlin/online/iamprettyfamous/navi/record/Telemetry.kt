@@ -57,9 +57,8 @@ object Telemetry {
     private const val TAG = "NaviTelemetry"
 
     // 50 Hz: a pothole is a spike a few samples wide; the Flet app's 400 ms missed most.
-    // KNOWN COST, NOT YET PAID DOWN: this runs whenever Ride is on screen, recording
-    // or not, and the spec's sensors_on_demand pref is not honoured. On a bike with
-    // no charger, driving a screen and GPS in the sun, that is battery. See KNOWN.md.
+    // Only while recording (or with sensors_on_demand off): otherwise only the
+    // sensors behind the visible gauges run, at SENSOR_UI_US - see wanted().
     private const val SENSOR_PERIOD_US = 20_000
 
     // What a gauge needs when nothing is being recorded: about 16 Hz.
@@ -125,7 +124,9 @@ object Telemetry {
     // below sea level around the Bay - and the barometer's absolute figure moves
     // ~8 m per hPa of weather, so neither is ever shown as an elevation.
     private var mslM: Double? = null
-    private var mslAtS: Double? = null
+    // Boot-clock seconds of the fix it came from: freshness is judged on the boot
+    // clock, never the wall clock, which may drift with no network for hours.
+    private var mslAtBootS: Double? = null
     private var rideFirstMslM: Double? = null
 
     fun hasGps(context: Context): Boolean =
@@ -243,7 +244,8 @@ object Telemetry {
                 if (copy.hasMslAltitude()) {
                     val m = copy.mslAltitudeMeters
                     val at = copy.time / 1000.0
-                    handler?.post { onMsl(m, at) }
+                    val boot = copy.elapsedRealtimeNanos / 1e9
+                    handler?.post { onMsl(m, at, boot) }
                 }
             } catch (e: Exception) {
                 // IOException loading the geoid data, or a fix it cannot convert.
@@ -253,9 +255,9 @@ object Telemetry {
     }
 
     /** Ride thread. A fix's sea-level altitude arrived; merge it into that fix's row if it is still the newest. */
-    private fun onMsl(m: Double, atS: Double) {
+    private fun onMsl(m: Double, atS: Double, bootS: Double) {
         mslM = m
-        mslAtS = atS
+        mslAtBootS = bootS
         if (recording && rideFirstMslM == null) rideFirstMslM = m
         val newest = ride.samples.lastOrNull()
         if ((newest?.get("t") as? Number)?.toDouble()?.let { kotlin.math.abs(it - atS) < 0.01 } == true) {
@@ -264,8 +266,10 @@ object Telemetry {
     }
 
     /** Sea-level elevation, only while it is fresh: an old one is not where she is now. */
-    private fun elevationM(nowS: Double): Double? =
-        mslM?.takeIf { mslAtS?.let { nowS - it <= MSL_FRESH_S } == true }
+    private fun elevationM(): Double? {
+        val nowBootS = SystemClock.elapsedRealtimeNanos() / 1e9
+        return mslM?.takeIf { mslAtBootS?.let { nowBootS - it <= MSL_FRESH_S } == true }
+    }
 
     /**
      * Climb since the RIDE began, never since the app opened - a baseline taken
@@ -405,7 +409,7 @@ object Telemetry {
             // numbers and the recording state without a screenshot.
             val d = _dash.value
             Log.d(TAG, "fix rec=$recording rows=${ride.count} speed=${d.speedMs} alt=${d.altM} " +
-                "msl=${elevationM(t)} sinceStart=${climbSinceStartM()} " +
+                "msl=${elevationM()} sinceStart=${climbSinceStartM()} " +
                 "tilt=${d.tiltDeg} lean=${d.leanDeg} gLat=${d.gLat} climb=${d.climbMps}")
         }
         motion.resetPeaks()
@@ -420,7 +424,7 @@ object Telemetry {
         _dash.value = DashState.build(
             row = ride.samples.lastOrNull(), motion = motion, gpsClimb = gpsClimb, ear = null,
             fixSpeedMs = f?.takeIf { it.hasSpeed() }?.speed?.toDouble(),
-            mslAltM = elevationM(System.currentTimeMillis() / 1000.0),
+            mslAltM = elevationM(),
             climbSinceStartM = climbSinceStartM(),
             machine = machine, imperial = imperial, limit = SpeedLimit.NONE,
         )

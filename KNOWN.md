@@ -4,18 +4,17 @@ Things that are true of the app today, written down so they are not rediscovered
 the hard way. Each says what, why it matters, and what would close it. Remove an
 entry in the same commit that fixes it.
 
-## Motion sensors run at 50 Hz whenever Ride is on screen
+## Sensors on demand is verified on the emulator only
 
-`record/Telemetry.kt` subscribes to all five motion sensors at 50 Hz as soon as
-the Ride screen holds telemetry, recording or not. The spec's `sensors_on_demand`
-preference (default on: "only subscribe while a gauge needs it") is not honoured.
+Not recording, only the sensors behind the visible gauges run, at ~16 Hz
+(Hud.channels -> Telemetry.setDashChannels); recording runs all five at 50 Hz.
+Verified per layout on emulator-5556 from the app's log AND dumpsys
+sensorservice (Ribbon: barometer only; Corners/Column/Minimal: none; Gunsight:
+accelerometer; Strip: accelerometer + barometer). What it saves on her phone's
+battery has not been measured.
 
-Why it matters: on the bike there may be no charger, and the phone is already
-driving a bright screen and the GPS. Battery drain from this will look like "the
-app eats battery", not like a sensor setting.
-
-Closes when: sensors are subscribed only while a recording runs or a visible
-gauge reads a motion channel, and the rate drops when nothing needs 50 Hz.
+Closes when: an hour on her phone with the dash showing and nothing recording
+costs noticeably less battery than before, or someone measures it.
 
 ## lean_deg and g_lat are untested anywhere but on a real ride
 
@@ -39,8 +38,15 @@ is timing-dependent: 15 of 15 were kept in one test, 10 of 15 in another.
 Closes when: flushing is tied to time (every few seconds) as well as to row
 count, or accepted as is.
 
-## Barometric altitude is absolute from standard pressure
+## Elevation needs Android 14, and is only as good as GPS height
 
-`DashState.altM` prefers the barometer, computed from 1013.25 hPa as the Python
-did. Weather moves it about 8 m per hPa, so it can sit a hundred metres off. The
-climb rate is unaffected. On the emulator it reads 0.0 m.
+The dash's elevation is height above MEAN SEA LEVEL from Android 14's
+AltitudeConverter (a geoid model applied to the GPS fix), and a dash on older
+Android - never raw GPS height (~105 ft low around the Bay) and never absolute
+barometric altitude (~8 m per hPa of weather). GPS vertical accuracy is worse
+than horizontal (believed +-5-15 m, not measured). "Climb since start" uses
+the barometer's relative altitude, baselined when the ride starts; the emulator's
+pressure never changes, so that path is only tested on a real phone.
+
+Closes when: checked on her phone against a known height (a summit marker), and
+the Moto G's Android version is known (adb shell getprop ro.build.version.release).
