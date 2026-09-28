@@ -48,7 +48,7 @@ import online.iamprettyfamous.navi.map.RideMapController
 import online.iamprettyfamous.navi.map.RideMapController.Problem
 import online.iamprettyfamous.navi.record.RecState
 import online.iamprettyfamous.navi.record.RideService
-import online.iamprettyfamous.navi.sensors.GpsSource
+import online.iamprettyfamous.navi.record.Telemetry
 import online.iamprettyfamous.navi.ui.PALETTES
 import online.iamprettyfamous.navi.ui.Palette
 import online.iamprettyfamous.navi.ui.palette
@@ -60,7 +60,6 @@ import online.iamprettyfamous.navi.ui.palette
 class MainActivity : ComponentActivity() {
 
     private lateinit var map: RideMapController
-    private lateinit var gps: GpsSource
     private val prefs by lazy { getSharedPreferences("navi", MODE_PRIVATE) }
 
     private var theme by mutableStateOf("night")
@@ -78,8 +77,19 @@ class MainActivity : ComponentActivity() {
             }
         }
 
+    /** The Ride screen holds telemetry while it is visible; a recording holds it on its own. */
+    private var holding = false
+
     private fun startGps() {
-        if (locationGranted) gps.start(FIX_INTERVAL_MS) { map.showFix(it) }
+        if (!locationGranted || holding) return
+        holding = true
+        Telemetry.acquire(this, "screen")
+    }
+
+    private fun stopGps() {
+        if (!holding) return
+        holding = false
+        Telemetry.release("screen")
     }
 
     // Asked for once, at the first recording. Refused, the ride still records;
@@ -145,7 +155,6 @@ class MainActivity : ComponentActivity() {
         theme = prefs.getString("theme", "night") ?: "night"
         bike = prefs.getString("bike", "yellow") ?: "yellow"
 
-        gps = GpsSource(this)
         map = RideMapController(this)
         map.onFollowingChanged = { following = it }
         map.onProblem = { problem = it }
@@ -168,10 +177,12 @@ class MainActivity : ComponentActivity() {
         var fixAge by remember { mutableStateOf<Double?>(null) }
         LaunchedEffect(Unit) {
             while (true) {
-                fixAge = gps.ageSeconds()
+                fixAge = Telemetry.fixAgeSeconds()
                 delay(1000)
             }
         }
+        // The map follows the same fixes the telemetry uses; there is one GPS listener.
+        LaunchedEffect(Unit) { Telemetry.fix.collect { it?.let(map::showFix) } }
         val rec by RideService.state.collectAsState()
         var nowMs by remember { mutableStateOf(System.currentTimeMillis()) }
         LaunchedEffect(Unit) {
@@ -200,7 +211,12 @@ class MainActivity : ComponentActivity() {
                     RoundButton(if (rec.recording) "■" else "●", p, if (rec.recording) p.bad else p.accent) {
                         onRecordTap()
                     }
-                    recordLine(rec, nowMs)?.let { Chip(it, p) }
+                    // Recording is shouted, not implied: the gauges show numbers either
+                    // way, so whether a ride is being WRITTEN is this red-edged chip
+                    // and the red square, and nothing else.
+                    recordLine(rec, nowMs)?.let { line ->
+                        if (rec.recording) Chip("● $line", p, edge = p.bad, ink = p.bad) else Chip(line, p)
+                    }
                 }
                 message(problem, locationGranted, fixAge)?.let { Chip(it, p) }
             }
@@ -263,20 +279,20 @@ class MainActivity : ComponentActivity() {
         problem == Problem.BAD_TILES -> "${MapFiles.TILES_NAME} is not a readable PMTiles v3 archive"
         problem == Problem.NO_STYLE -> "This build has no map style"
         !granted -> "Location is off for Navi — no bike on the map"
-        !gps.hasGps -> "This phone reports no GPS receiver"
+        !Telemetry.hasGps(this) -> "This phone reports no GPS receiver"
         fixAge == null -> "Waiting for GPS"
         fixAge > STALE_FIX_S -> "GPS lost ${fixAge.toInt()} s ago"
         else -> null
     }
 
     @Composable
-    private fun Chip(text: String, p: Palette) {
+    private fun Chip(text: String, p: Palette, edge: Color = p.border, ink: Color = p.text) {
         BasicText(
             text,
-            style = TextStyle(color = p.text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold),
+            style = TextStyle(color = ink, fontSize = 16.sp, fontWeight = FontWeight.SemiBold),
             modifier = Modifier
                 .background(p.surface, RoundedCornerShape(8.dp))
-                .border(1.dp, p.border, RoundedCornerShape(8.dp))
+                .border(if (edge == p.border) 1.dp else 2.dp, edge, RoundedCornerShape(8.dp))
                 .padding(horizontal = 14.dp, vertical = 8.dp),
         )
     }
@@ -300,7 +316,7 @@ class MainActivity : ComponentActivity() {
     override fun onStart() { super.onStart(); map.onStart(); startGps() }
     override fun onResume() { super.onResume(); map.onResume(); map.recheck() }
     override fun onPause() { map.onPause(); super.onPause() }
-    override fun onStop() { gps.stop(); map.onStop(); super.onStop() }
+    override fun onStop() { stopGps(); map.onStop(); super.onStop() }
     override fun onLowMemory() { super.onLowMemory(); map.onLowMemory() }
     override fun onDestroy() { map.onDestroy(); super.onDestroy() }
     override fun onSaveInstanceState(outState: Bundle) {
@@ -315,7 +331,5 @@ class MainActivity : ComponentActivity() {
         )
         const val STALE_FIX_S = 10.0
         const val STOP_CONFIRM_MS = 3000L
-        // The spec's `hz` preference defaults to 1.
-        const val FIX_INTERVAL_MS = 1000L
     }
 }
