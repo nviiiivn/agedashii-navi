@@ -68,6 +68,17 @@ class TurnBannerTest {
     }
 
     @Test
+    fun `the arrow comes from the same kind as her clip, not from the words`() {
+        // "Keep right" reads as a plain right to the word matcher; Valhalla calls it stay-right, a slight right.
+        val fork = turning.copy(instruction = "Keep right at the fork", icon = Guidance.turnIcon("Keep right at the fork"), kind = "slight-right")
+        assertEquals("right", fork.icon)
+        assertEquals(Glyph.SLIGHT_RIGHT, TurnBanner.plan(fork, true)!!.glyph)
+        // An exit has no side in its kind, so the words' side is kept.
+        val exit = turning.copy(instruction = "Take exit 12 on the right", icon = Guidance.turnIcon("Take exit 12 on the right"), kind = "exit")
+        assertEquals(Glyph.RIGHT, TurnBanner.plan(exit, true)!!.glyph)
+    }
+
+    @Test
     fun `every icon Guidance can name has a glyph`() {
         val words = listOf(
             "Make a U-turn", "You have arrived at your destination", "Turn sharp left", "Bear left", "Turn left",

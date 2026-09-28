@@ -1,6 +1,7 @@
 package online.iamprettyfamous.navi.core.dash
 
 import online.iamprettyfamous.navi.core.guidance.Guidance
+import online.iamprettyfamous.navi.core.guidance.ManeuverKind
 import online.iamprettyfamous.navi.core.guidance.Status
 import online.iamprettyfamous.navi.core.theme.Role
 
@@ -57,7 +58,10 @@ object TurnBanner {
     /** The banner for [status], or null - no route, no banner. [destination] is the name shown on arrival. */
     fun plan(status: Status?, imperial: Boolean, destination: String? = null): Plan? {
         if (status == null || !status.ok) return null
-        val glyph = if (status.instruction.isBlank()) null else glyphOf(status.icon)
+        // The shape from the same classifier that picks her clip, so the arrow
+        // and the voice cannot disagree; the words' icon only where the kind has
+        // no side (exit, merge) or there is none.
+        val glyph = if (status.instruction.isBlank()) null else glyphOfKind(status.kind) ?: glyphOf(status.icon)
         return when {
             status.offRoute -> Plan(
                 glyph, OFF_ROUTE, OFF_ROUTE_TITLE,
@@ -74,6 +78,19 @@ object TurnBanner {
                 status.eta, offRoute = false,
             )
         }
+    }
+
+    fun glyphOfKind(kind: String?): Glyph? = when (kind) {
+        ManeuverKind.CONTINUE -> Glyph.STRAIGHT
+        ManeuverKind.TURN_LEFT -> Glyph.LEFT
+        ManeuverKind.TURN_RIGHT -> Glyph.RIGHT
+        ManeuverKind.SLIGHT_LEFT -> Glyph.SLIGHT_LEFT
+        ManeuverKind.SLIGHT_RIGHT -> Glyph.SLIGHT_RIGHT
+        ManeuverKind.SHARP_LEFT -> Glyph.SHARP_LEFT
+        ManeuverKind.SHARP_RIGHT -> Glyph.SHARP_RIGHT
+        ManeuverKind.UTURN -> Glyph.U_TURN
+        ManeuverKind.ARRIVE -> Glyph.FLAG
+        else -> null
     }
 
     fun glyphOf(icon: String): Glyph? = when (icon) {

@@ -14,6 +14,11 @@ data class Maneuver(
     val index: Int,
     /** Distance from the start of the route to it. */
     val cumM: Double,
+    /**
+     * The clip key, guidance.ManeuverKind's name for it (from Valhalla's
+     * maneuver type), or null where none of her clips fits - then it is spoken.
+     */
+    val kind: String? = null,
 )
 
 /**

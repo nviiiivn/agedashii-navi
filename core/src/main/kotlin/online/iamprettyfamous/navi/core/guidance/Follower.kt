@@ -25,7 +25,15 @@ data class Status(
     val leftS: Double? = null,
     val eta: String = "",
     val source: String = "",
+    /** The words due now, for the screen log and for TTS. */
     val say: String? = null,
+    /**
+     * The next maneuver's clip key (ManeuverKind), or null - the KEY, kept
+     * apart from the words, because her recorded lines are filed by it.
+     */
+    val kind: String? = null,
+    /** Which prompt [say] is: "far", "near" or "now" - "now" plays the maneuver clip alone. Null with no [say]. */
+    val band: String? = null,
 )
 
 /**
@@ -101,7 +109,7 @@ class Follower(
         if (left.metres != null && left.metres < Guidance.ARRIVE_M) arrived = true
 
         val man = next.maneuver
-        val say = if (!offRoute && man != null && !arrived) maybeSay(man, next.metres, speedMs) else null
+        val due = if (!offRoute && man != null && !arrived) maybeSay(man, next.metres, speedMs) else null
         val instruction = man?.instruction ?: ""
         return Status(
             ok = true,
@@ -118,7 +126,9 @@ class Follower(
             leftS = left.seconds,
             eta = Guidance.etaText(left.seconds, now, zone),
             source = route.source,
-            say = say,
+            say = due?.first,
+            kind = man?.kind,
+            band = due?.second,
         ).also { last = it }
     }
 
@@ -162,7 +172,8 @@ class Follower(
      * itself - a real bug once. Firing a band also marks every wider one said,
      * so a band crossed without being announced cannot fire later.
      */
-    private fun maybeSay(man: Maneuver, metres: Double?, speedMs: Double?): String? {
+    /** The prompt due now for [man], and its band - or null. */
+    private fun maybeSay(man: Maneuver, metres: Double?, speedMs: Double?): Pair<String, String>? {
         if (metres == null) return null
         val index = man.index
         val points = Guidance.promptPoints(speedMs)
@@ -174,7 +185,7 @@ class Follower(
                 said.add(index to other)
                 if (other == band) break
             }
-            return Guidance.spoken(man.instruction, man.street, metres, imperial, band)
+            return Guidance.spoken(man.instruction, man.street, metres, imperial, band) to band
         }
         return null
     }
