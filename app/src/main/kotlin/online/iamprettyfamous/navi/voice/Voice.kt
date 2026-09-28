@@ -36,8 +36,12 @@ object Voice {
     private const val CHECK = "check:"
     private const val MIN_CHECK_BYTES = 1024L
     private const val CHECK_TIMEOUT_MS = 8000L
-    /** A prompt held while the voice is checked is said once it is ready, if no older than this. */
-    private const val PENDING_FRESH_MS = 5000L
+    /**
+     * A prompt held while the voice is checked is said once it is ready, if no
+     * older than this. Tight on purpose: the nearest prompt fires ~6 s before
+     * the turn, and an instruction heard after its turn is worse than none.
+     */
+    private const val PENDING_FRESH_MS = 3000L
     private const val STARTING = "starting the phone's voice"
     private const val CHECKING = "checking the phone's voice"
 
