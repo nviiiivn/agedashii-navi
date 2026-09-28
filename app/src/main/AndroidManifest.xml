@@ -12,6 +12,12 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
+    <!-- The rev counter (phase 4): the microphone, only when she switches it on,
+         per ride. Its foreground-service type is what lets it keep listening
+         with the screen locked during a recording. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+
     <!-- Rule 1 is "works with no signal, no exception", so for now the app is
          not allowed onto the network at all: MapLibre's library manifest asks
          for INTERNET and this strips it. Anything that silently needed the
@@ -39,6 +45,6 @@
         <service
             android:name=".record.RideService"
             android:exported="false"
-            android:foregroundServiceType="location" />
+            android:foregroundServiceType="location|microphone" />
     </application>
 </manifest>

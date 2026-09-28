@@ -30,7 +30,7 @@ import online.iamprettyfamous.navi.prefs.Prefs
 import online.iamprettyfamous.navi.record.Telemetry
 
 /** A setting that changed, so the Ride screen can apply it at once. */
-enum class Changed { THEME, BIKE, BUILDINGS, NORTH_UP, KEEP_AWAKE, HUD, TELEMETRY }
+enum class Changed { THEME, BIKE, BUILDINGS, NORTH_UP, KEEP_AWAKE, HUD, TELEMETRY, MIC_ON, MIC_OFF }
 
 /**
  * Settings: every preference that does something today, the honest account of
@@ -48,6 +48,7 @@ fun SettingsPanel(
     /** Bumped on every change, so the panel re-reads prefs (SharedPreferences are not Compose state). */
     rev: Int,
     sensors: List<Telemetry.SensorLine>,
+    mic: Telemetry.MicState,
     fixAgeS: Double?,
     fixAccM: Double?,
     version: String,
@@ -115,10 +116,17 @@ fun SettingsPanel(
                 prefs.sensorsOnDemand = it == "on"; onChanged(Changed.TELEMETRY)
             }
 
+            // Never remembered: she switches it on per ride (spec rule 5), and a
+            // ride ending switches it off.
+            Choice("Microphone (rev counter)", p, listOf("off" to "Off", "on" to "On for this ride"), onOff(mic.on)) {
+                onChanged(if (it == "on") Changed.MIC_ON else Changed.MIC_OFF)
+            }
+
             Heading("What is actually being read", p)
             Text(gpsLine(fixAgeS, fixAccM, prefs.imperial), p, size = 16)
             if (sensors.isEmpty()) Text("Sensors: nothing running yet", p, size = 16, faint = true)
             for (s in sensors) Text(sensorLine(s), p, size = 16, faint = s.hz == null)
+            Text(micAccount(mic), p, size = 16, faint = !mic.on)
             Text("Recording runs every sensor at 50 per second, whatever this says.", p, size = 12, faint = true)
 
             Heading("About", p)
@@ -143,6 +151,16 @@ private fun sensorLine(s: Telemetry.SensorLine): String = when {
     s.hz == null -> "${label(s.name)}: off - no gauge on screen needs it"
     s.lastSeenS == null -> "${label(s.name)}: on at ${s.hz} / s, nothing received yet"
     else -> "${label(s.name)}: on at ${s.hz} / s, last reading %.1f s ago".format(s.lastSeenS)
+}
+
+/** The microphone's line in the honest account, and beside record while it listens. */
+fun micAccount(m: Telemetry.MicState): String = when {
+    m.error.isNotEmpty() -> "Microphone: ${m.error}"
+    !m.on -> "Microphone: off"
+    m.rpm != null -> "Microphone: on · %,d rpm - uncalibrated estimate".format(m.rpm.toLong()) +
+        (if (m.rejected.isNotEmpty()) " · last window rejected: ${m.rejected}" else "")
+    m.rejected.isNotEmpty() -> "Microphone: on · no rpm: ${m.rejected}"
+    else -> "Microphone: on · listening"
 }
 
 private fun label(name: String) = when (name) {

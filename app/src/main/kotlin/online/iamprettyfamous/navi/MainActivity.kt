@@ -41,6 +41,7 @@ import online.iamprettyfamous.navi.record.Telemetry
 import online.iamprettyfamous.navi.prefs.Prefs
 import online.iamprettyfamous.navi.ui.Changed
 import online.iamprettyfamous.navi.ui.SettingsPanel
+import online.iamprettyfamous.navi.ui.micAccount
 import androidx.activity.compose.BackHandler
 import online.iamprettyfamous.navi.ui.ButtonColumnLayout
 import online.iamprettyfamous.navi.ui.Chip
@@ -81,8 +82,29 @@ class MainActivity : ComponentActivity() {
             Changed.KEEP_AWAKE -> keepAwake(settings.keepAwake)
             Changed.HUD -> { hudLayout = Layout.of(settings.hud); dashOn = settings.dash }
             Changed.TELEMETRY -> Telemetry.refreshPrefs(this)
+            Changed.MIC_ON -> micOn()
+            Changed.MIC_OFF -> {
+                RideService.micWanted = false
+                Telemetry.setMic(this, false)
+                RideService.refreshTypes(this)
+            }
         }
         settingsRev++
+    }
+
+    private val askMic =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            if (granted) micOn()
+        }
+
+    /** The microphone on, for this ride: permission first, then the service told before capture starts. */
+    private fun micOn() {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) !=
+            PackageManager.PERMISSION_GRANTED
+        ) return askMic.launch(Manifest.permission.RECORD_AUDIO)
+        RideService.micWanted = true
+        RideService.refreshTypes(this)
+        Telemetry.setMic(this, true)
     }
 
     private fun keepAwake(on: Boolean) {
@@ -161,6 +183,9 @@ class MainActivity : ComponentActivity() {
             prefs.edit().putBoolean("buildings", on).apply()
             map.setBuildings(on)
         }
+        if (intent?.hasExtra("mic") == true) {
+            applySetting(if (intent.getBooleanExtra("mic", false)) Changed.MIC_ON else Changed.MIC_OFF)
+        }
         if (intent?.hasExtra("record") != true) return
         val want = intent.getBooleanExtra("record", false)
         val rec = RideService.state.value.recording
@@ -232,6 +257,8 @@ class MainActivity : ComponentActivity() {
         }
         @Suppress("UNUSED_VARIABLE") val rev = settingsRev // a change in Settings redraws the ride screen
         val sensorLines by Telemetry.sensors.collectAsState()
+        val micState by Telemetry.mic.collectAsState()
+        val lastFix by Telemetry.fix.collectAsState()
         BackHandler(enabled = settingsOpen) { settingsOpen = false }
         Box(Modifier.fillMaxSize().background(p.bg)) {
             AndroidView(factory = { map.mapView }, modifier = Modifier.fillMaxSize())
@@ -263,6 +290,9 @@ class MainActivity : ComponentActivity() {
                     recordLine(rec, nowMs)?.let { line ->
                         if (rec.recording) Chip("● $line", p, edge = p.bad, ink = p.bad) else Chip(line, p)
                     }
+                    // The UI says when the mic listens (spec rule 5), and what it hears -
+                    // including why there is no rpm, rather than a blank that looks broken.
+                    if (micState.on || micState.error.isNotEmpty()) Chip(micAccount(micState), p)
                     message(problem, locationGranted, fixAge)?.let { Chip(it, p) }
                 },
             ) {
@@ -275,8 +305,8 @@ class MainActivity : ComponentActivity() {
 
             if (settingsOpen) {
                 SettingsPanel(
-                    p = p, prefs = settings, rev = settingsRev, sensors = sensorLines,
-                    fixAgeS = fixAge, fixAccM = Telemetry.fix.value?.takeIf { it.hasAccuracy() }?.accuracy?.toDouble(),
+                    p = p, prefs = settings, rev = settingsRev, sensors = sensorLines, mic = micState,
+                    fixAgeS = fixAge, fixAccM = lastFix?.takeIf { it.hasAccuracy() }?.accuracy?.toDouble(),
                     version = runCatching { packageManager.getPackageInfo(packageName, 0).versionName }.getOrNull() ?: "",
                     onChanged = ::applySetting,
                     onClose = { settingsOpen = false },

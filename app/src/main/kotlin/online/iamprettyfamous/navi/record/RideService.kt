@@ -62,6 +62,7 @@ class RideService : Service() {
         when (intent?.action) {
             ACTION_STOP -> finish()
             ACTION_START -> begin()
+            ACTION_TYPES -> if (active) promote()
             else -> stopSelf()
         }
         // NOT sticky, on purpose. If Android kills the process mid-ride, a
@@ -78,8 +79,7 @@ class RideService : Service() {
         if (active) return
         try {
             // Within five seconds of startForegroundService(), or Android kills us.
-            ServiceCompat.startForeground(this, NOTIFY_ID, notification("Starting…"),
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION)
+            ServiceCompat.startForeground(this, NOTIFY_ID, notification("Starting…"), types())
         } catch (e: RuntimeException) {
             // No location permission, or started from the background.
             Telemetry.publishEnded(RecState(errors = listOf("could not start recording: ${e.message}")))
@@ -99,6 +99,24 @@ class RideService : Service() {
         Telemetry.onRecordedRow = { r -> notifyProgress(r) }
         Telemetry.acquire(this, "ride")
         Telemetry.startRecording(path, name, Telemetry.machineHeader(prefs.getString("machine", "cb750") ?: "cb750"))
+    }
+
+    /**
+     * Location always; microphone too while she has it on. Without the microphone
+     * type, Android silences the mic the moment the screen locks, and the rev
+     * counter would go quiet mid-ride with nothing on screen to say why.
+     */
+    private fun types(): Int =
+        ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION or
+            (if (micWanted) ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE else 0)
+
+    /** The mic was switched during a ride: tell Android what this service now uses. */
+    private fun promote() {
+        try {
+            ServiceCompat.startForeground(this, NOTIFY_ID, notification("Recording"), types())
+        } catch (e: RuntimeException) {
+            Log.w(TAG, "could not change the service type: ${e.message}")
+        }
     }
 
     /** Ride thread, every recorded row. The notification changes every 10 s, not every fix. */
@@ -136,6 +154,7 @@ class RideService : Service() {
                 }
             }
             prefs.edit().remove(KEY_PATH).remove(KEY_NAME).apply()
+            micWanted = false // the ride ended, and the mic with it (per ride)
             Telemetry.publishEnded(RecState(
                 recording = false, name = r?.name, path = r?.path,
                 samples = r?.count ?: 0, distanceM = r?.distanceM ?: 0.0,
@@ -204,6 +223,21 @@ class RideService : Service() {
     companion object {
         const val ACTION_START = "online.iamprettyfamous.navi.record.START"
         const val ACTION_STOP = "online.iamprettyfamous.navi.record.STOP"
+        const val ACTION_TYPES = "online.iamprettyfamous.navi.record.TYPES"
+
+        /**
+         * Whether the mic is meant to be on. Set by the screen when she switches
+         * it, BEFORE the service is started or told - the capture itself starts
+         * a moment later on the ride thread, so its own state would be too late.
+         */
+        @Volatile var micWanted = false
+
+        /** Call after switching the mic while recording, from the foreground. */
+        fun refreshTypes(context: Context) {
+            if (Telemetry.rec.value.recording) {
+                context.startService(Intent(context, RideService::class.java).setAction(ACTION_TYPES))
+            }
+        }
 
         /** The recording's state. Telemetry publishes it; this is the same flow. */
         val state: StateFlow<RecState> get() = Telemetry.rec

@@ -22,6 +22,7 @@ import online.iamprettyfamous.navi.core.Py
 import online.iamprettyfamous.navi.core.bikes.Bikes
 import online.iamprettyfamous.navi.core.dash.DashState
 import online.iamprettyfamous.navi.core.guidance.SpeedLimit
+import online.iamprettyfamous.navi.core.rpm.ExhaustListener
 import online.iamprettyfamous.navi.core.telemetry.GpsClimb
 import online.iamprettyfamous.navi.core.telemetry.Live
 import online.iamprettyfamous.navi.core.telemetry.Motion
@@ -100,6 +101,19 @@ object Telemetry {
     /** What each motion sensor is actually doing, refreshed once a second while telemetry runs. */
     val sensors: StateFlow<List<SensorLine>> = _sensors
 
+    /** The microphone as she should see it: whether it listens, and what it makes of the sound. */
+    data class MicState(
+        val on: Boolean = false,
+        val rpm: Double? = null,
+        /** Why the last window was thrown away, from the core - shown, never hidden. */
+        val rejected: String = "",
+        val error: String = "",
+        val source: String = "",
+    )
+
+    private val _mic = MutableStateFlow(MicState())
+    val mic: StateFlow<MicState> = _mic
+
     /** Told on the ride thread after every recorded row; the service updates its notification. */
     @Volatile var onRecordedRow: ((Ride) -> Unit)? = null
 
@@ -132,6 +146,11 @@ object Telemetry {
     // Raw GPS altitude is height above the WGS84 ellipsoid - about 32 m / 105 ft
     // below sea level around the Bay - and the barometer's absolute figure moves
     // ~8 m per hPa of weather, so neither is ever shown as an elevation.
+    // The rev counter. The core's listener, fed on this thread; the capture runs on its own.
+    private var ear = ExhaustListener("cb750")
+    private var micOn = false
+    private var micCapture: Mic? = null
+
     private var mslM: Double? = null
     // Boot-clock seconds of the fix it came from: freshness is judged on the boot
     // clock, never the wall clock, which may drift with no network for hours.
@@ -163,6 +182,7 @@ object Telemetry {
         val demand = prefs.getBoolean("sensors_on_demand", true)
         val h = ensureThread()
         h.post {
+            if (m != machine) ear.setMachine(m)
             machine = m
             imperial = !metric
             hz = rate
@@ -206,6 +226,8 @@ object Telemetry {
             recording = false
             ride = Ride(path = null)
             resubscribe()
+            // The microphone is switched on PER RIDE (spec rule 5): a ride ending ends it.
+            micOff()
             done(finished)
         }
     }
@@ -233,6 +255,7 @@ object Telemetry {
         val rate = prefs.getInt("hz", 1).coerceIn(1, 10)
         val demand = prefs.getBoolean("sensors_on_demand", true)
         ensureThread().post {
+            if (m != machine) ear.setMachine(m)
             machine = m
             imperial = !metric
             onDemand = demand
@@ -260,6 +283,7 @@ object Telemetry {
     /** Ride thread. The honest account, from what the sensors have actually done. */
     private fun publishSensors() {
         if (!::app.isInitialized) return
+        publishMic()
         val sm = app.getSystemService(Context.SENSOR_SERVICE) as SensorManager
         val nowBootS = SystemClock.elapsedRealtimeNanos() / 1e9
         val errors = motion.available().errors
@@ -272,6 +296,53 @@ object Telemetry {
                 note = errors[s.name],
             )
         }
+    }
+
+    /**
+     * Switch the microphone on or off. Main thread; the caller has the
+     * RECORD_AUDIO permission before asking for on. Off at every launch and
+     * after every ride - never remembered - because she switches it on per ride.
+     */
+    fun setMic(context: Context, on: Boolean) {
+        app = context.applicationContext
+        ensureThread().post { if (on) micOnNow() else micOff() }
+    }
+
+    /** Ride thread. */
+    private fun micOnNow() {
+        if (micOn) return
+        val capture = Mic(app)
+        micCapture = capture
+        micOn = true
+        ear = ExhaustListener(machine)
+        ear.started()
+        val ok = capture.start(
+            onChunk = { chunk, t -> handler?.post { if (micOn) ear.onPcm16(chunk, t) } },
+            onError = { why -> handler?.post { ear.error = why; publishMic() } },
+        )
+        if (!ok) {
+            micOn = false
+            micCapture = null
+            ear.stopped()
+        }
+        publishMic()
+    }
+
+    /** Ride thread. */
+    private fun micOff() {
+        val capture = micCapture ?: run { if (micOn) { micOn = false; publishMic() }; return }
+        micCapture = null
+        micOn = false
+        capture.stop()
+        ear.stopped()
+        publishMic()
+    }
+
+    private fun publishMic() {
+        _mic.value = MicState(
+            on = micOn, rpm = if (micOn) ear.rpmEst else null, rejected = ear.rpmRejected,
+            error = ear.error, source = micCapture?.source.orEmpty(),
+        )
     }
 
     /** Publish the state of a recording that has ended, or was cut off. */
@@ -443,6 +514,7 @@ object Telemetry {
         (app.getSystemService(Context.LOCATION_SERVICE) as LocationManager).removeUpdates(gps)
         (app.getSystemService(Context.SENSOR_SERVICE) as SensorManager).unregisterListener(sensorListener)
         subscribed.clear()
+        micOff()
         handler?.removeCallbacks(dashTick)
     }
 
@@ -462,11 +534,13 @@ object Telemetry {
         ) ?: return
         motion.setBatteryPct(batteryPct())
         val extra = LinkedHashMap<String, Any?>(motion.latest())
+        if (micOn) extra.putAll(ear.latest())
         // GPS climb only where the barometer gave none, as ride.py:473-479 does.
         if ("climb_mps" !in extra && gpsClimbMps != null) extra["climb_mps"] = Py.round(gpsClimbMps, 2)
         ride.feedExtra(extra)
         requestMsl(fix)
         publishDash()
+        ear.resetPeaks()
         if (debuggable) {
             // Debug builds only: one line per fix, so a test can see the gauges'
             // numbers and the recording state without a screenshot.
@@ -485,7 +559,7 @@ object Telemetry {
     private fun publishDash() {
         val f = _fix.value
         _dash.value = DashState.build(
-            row = ride.samples.lastOrNull(), motion = motion, gpsClimb = gpsClimb, ear = null,
+            row = ride.samples.lastOrNull(), motion = motion, gpsClimb = gpsClimb, ear = if (micOn) ear else null,
             fixSpeedMs = f?.takeIf { it.hasSpeed() }?.speed?.toDouble(),
             mslAltM = elevationM(),
             climbSinceStartM = climbSinceStartM(),

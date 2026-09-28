@@ -74,3 +74,23 @@ has proved it on her screen in direct sun. Sunlight is also the theme minion
 
 Closes when: Sunlight is read on her phone outdoors, in sun, over a road - or
 the glass goes denser (0.95 gives bad 7.52, computed) if it is marginal there.
+
+## The rev counter is UNCALIBRATED on both bikes
+
+rpm comes from the exhaust note with each profile's `harmonic` = 1.0 - the
+assumption that the loudest peak is the firing frequency (two pulses per
+revolution on the CB750's inline four). Which harmonic actually dominates
+through her CB750's airbox and exhaust is a fact about HER bike, and nothing has
+been fitted to it; the gauge reads "rpm est" and Settings says "uncalibrated
+estimate". A reading stands at most 2 s past its last accepted window, then
+blanks with the reason (core Exhaust.RPM_HOLD_S).
+
+The emulator here has no audio input (it runs -no-audio), so it only ever hears
+silence: the whole mic path has been seen to start, say "too quiet", log
+loudness into the ride, switch off when the ride ends, and carry the microphone
+foreground-service type - but it has never heard an engine.
+
+Closes when: a recording of her bike at known revs sets `harmonic` and
+`calibratedFrom` in core/bikes/Bikes.kt (one profile change, nothing else), and
+the readout is checked against the bike's own tach at steady revs (phase 4's
+done-test: within ~5%).
