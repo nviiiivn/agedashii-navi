@@ -159,7 +159,7 @@ class RideMapController(context: Context) {
         val m = map ?: return
         val lc = m.locationComponent
         if (!locationActive) {
-            // No engine of its own: fixes come from GpsSource via showFix().
+            // No engine of its own: fixes come from Telemetry via showFix().
             lc.activateLocationComponent(
                 LocationComponentActivationOptions.builder(appContext, s)
                     .locationComponentOptions(markerOptions())
