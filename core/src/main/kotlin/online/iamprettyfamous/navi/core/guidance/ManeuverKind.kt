@@ -27,20 +27,29 @@ object ManeuverKind {
     const val EXIT = "exit"
     const val ARRIVE = "arrive"
 
+    /**
+     * The twelfth, added by AGEDASHII 2026-09-28: optional. If she records it,
+     * it plays; if not, the words go to the phone's voice as before - a name
+     * costs nothing and only ever improves on silence.
+     */
+    const val ROUNDABOUT = "roundabout"
+
     /** From her other clips: the route starting. Not a maneuver she is told to make. */
     const val START = "start"
 
-    /** The eleven maneuver clips, in AGEDASHII's order. */
+    /** The maneuver clips, in AGEDASHII's order: her eleven, then roundabout. */
     val MANEUVERS = listOf(
         TURN_LEFT, TURN_RIGHT, SLIGHT_LEFT, SLIGHT_RIGHT, SHARP_LEFT, SHARP_RIGHT, UTURN, CONTINUE, MERGE, EXIT, ARRIVE,
+        ROUNDABOUT,
     )
 
     /**
      * Valhalla's maneuver `type` (its turn-by-turn API reference, kNone = 0 to
      * kBuildingExit = 43) to a clip name, or null where no clip fits - then the
-     * words are spoken by TTS rather than a wrong clip played. Null for
-     * roundabouts, ferries, transit and indoor steps: none of the eleven says
-     * them honestly.
+     * words are spoken by TTS rather than a wrong clip played. Entering a
+     * roundabout (26) is [ROUNDABOUT]; leaving one (27) is null - the clip for
+     * going in would be wrong on the way out, so the words say which exit.
+     * Null for ferries, transit and indoor steps: she rides a motorcycle.
      *
      * Ramps are not exits: Valhalla keeps kExitRight/Left (20, 21, leaving a
      * highway) apart from kRampRight/Left (18, 19, often ONTO one), and an
@@ -60,6 +69,7 @@ object ManeuverKind {
         16, 19, 24 -> SLIGHT_LEFT // slight left, ramp left, stay left
         20, 21 -> EXIT
         25, 37, 38 -> MERGE
+        26 -> ROUNDABOUT
         else -> null
     }
 
