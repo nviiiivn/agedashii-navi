@@ -9,7 +9,9 @@ import android.hardware.SensorManager
 import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
+import android.location.altitude.AltitudeConverter
 import android.os.BatteryManager
+import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.SystemClock
@@ -60,15 +62,24 @@ object Telemetry {
     // no charger, driving a screen and GPS in the sun, that is battery. See KNOWN.md.
     private const val SENSOR_PERIOD_US = 20_000
 
+    // What a gauge needs when nothing is being recorded: about 16 Hz.
+    private const val SENSOR_UI_US = 60_000
+
     // The gauges redraw at 5 Hz between 1 Hz fixes, so the horizon and g-ball move.
     private const val DASH_EVERY_MS = 200L
 
+    // A sea-level elevation older than this is not shown.
+    private const val MSL_FRESH_S = 5.0
+
+    /** A sensor, and the ride-log channels that come from it (Motion.latest()). */
+    private class Source(val type: Int, val name: String, val channels: Set<String>)
+
     private val SENSORS = listOf(
-        Sensor.TYPE_ACCELEROMETER to "accelerometer",
-        Sensor.TYPE_LINEAR_ACCELERATION to "user_accelerometer",
-        Sensor.TYPE_GYROSCOPE to "gyroscope",
-        Sensor.TYPE_PRESSURE to "barometer",
-        Sensor.TYPE_MAGNETIC_FIELD to "magnetometer",
+        Source(Sensor.TYPE_ACCELEROMETER, "accelerometer", setOf("g_vert", "g_peak", "tilt_deg", "pitch_deg")),
+        Source(Sensor.TYPE_LINEAR_ACCELERATION, "user_accelerometer", setOf("g_bump")),
+        Source(Sensor.TYPE_GYROSCOPE, "gyroscope", setOf("yaw_gyro_dps", "gyro_peak")),
+        Source(Sensor.TYPE_PRESSURE, "barometer", setOf("pressure_hpa", "alt_baro_m", "climb_mps")),
+        Source(Sensor.TYPE_MAGNETIC_FIELD, "magnetometer", setOf("compass_deg")),
     )
 
     private val _fix = MutableStateFlow<Location?>(null)
@@ -102,6 +113,21 @@ object Telemetry {
     private var listening = false
     private var debuggable = false
 
+    // sensors_on_demand: which channels the visible gauges read (null = not
+    // told yet, so everything), whether the pref is on, and what is subscribed
+    // now, as sensor type -> sampling period in microseconds.
+    private var dashChannels: Set<String>? = null
+    private var onDemand = true
+    private val subscribed = HashMap<Int, Int>()
+
+    // Elevation above MEAN SEA LEVEL (API 34+), and the climb since the ride began.
+    // Raw GPS altitude is height above the WGS84 ellipsoid - about 32 m / 105 ft
+    // below sea level around the Bay - and the barometer's absolute figure moves
+    // ~8 m per hPa of weather, so neither is ever shown as an elevation.
+    private var mslM: Double? = null
+    private var mslAtS: Double? = null
+    private var rideFirstMslM: Double? = null
+
     fun hasGps(context: Context): Boolean =
         (context.getSystemService(Context.LOCATION_SERVICE) as LocationManager)
             .allProviders.contains(LocationManager.GPS_PROVIDER)
@@ -124,11 +150,13 @@ object Telemetry {
         val m = prefs.getString("machine", "cb750") ?: "cb750"
         val metric = prefs.getString("units", "imperial") == "metric"
         val rate = prefs.getInt("hz", 1).coerceIn(1, 10)
+        val demand = prefs.getBoolean("sensors_on_demand", true)
         val h = ensureThread()
         h.post {
             machine = m
             imperial = !metric
             hz = rate
+            onDemand = demand
             listen(h)
         }
     }
@@ -146,7 +174,13 @@ object Telemetry {
             val nowS = System.currentTimeMillis() / 1000.0
             ride = Ride(path = path, name = name, hz = hz, machine = machineHeader).also { it.start(nowS) }
             recording = true
-            motion.resetPeaks()
+            // Fresh sensor state for a fresh log: a sensor the gauges did not need
+            // was off, and its last reading may be minutes old. This also makes
+            // the barometer's baseline the start of the ride.
+            motion = Motion()
+            gpsClimb = GpsClimb()
+            rideFirstMslM = null
+            resubscribe()
             publishRec()
         }
     }
@@ -161,7 +195,20 @@ object Telemetry {
             finished?.stop(System.currentTimeMillis() / 1000.0)
             recording = false
             ride = Ride(path = null)
+            resubscribe()
             done(finished)
+        }
+    }
+
+    /**
+     * sensors_on_demand: the channels the visible gauges read (Hud.channels), or
+     * null for "everything". Not recording, only the sensors behind these run,
+     * at gauge rate; recording always runs every sensor at 50 Hz. Main thread.
+     */
+    fun setDashChannels(channels: Set<String>?) {
+        ensureThread().post {
+            dashChannels = channels
+            resubscribe()
         }
     }
 
@@ -173,6 +220,64 @@ object Telemetry {
     /** Run [work] on the ride thread. */
     fun post(work: () -> Unit) {
         ensureThread().post(work)
+    }
+
+    /**
+     * The geoid conversion's own thread. AltitudeConverter's first call loads
+     * data "and may take several seconds" (its docs), so it never runs on the
+     * ride thread: a fix is posted here, and its sea-level altitude is posted
+     * back to be merged into that fix's row. Until the data has loaded, the
+     * rows and the gauge carry no elevation - a dash, not a wait.
+     */
+    private var mslHandler: Handler? = null
+    private var converter: Any? = null
+
+    private fun requestMsl(fix: Location) {
+        if (Build.VERSION.SDK_INT < 34 || !fix.hasAltitude()) return
+        val h = mslHandler ?: Handler(HandlerThread("msl").apply { start() }.looper).also { mslHandler = it }
+        val copy = Location(fix)
+        h.post {
+            try {
+                val conv = (converter as? AltitudeConverter) ?: AltitudeConverter().also { converter = it }
+                conv.addMslAltitudeToLocation(app, copy)
+                if (copy.hasMslAltitude()) {
+                    val m = copy.mslAltitudeMeters
+                    val at = copy.time / 1000.0
+                    handler?.post { onMsl(m, at) }
+                }
+            } catch (e: Exception) {
+                // IOException loading the geoid data, or a fix it cannot convert.
+                Log.w(TAG, "no sea-level altitude: ${e.message}")
+            }
+        }
+    }
+
+    /** Ride thread. A fix's sea-level altitude arrived; merge it into that fix's row if it is still the newest. */
+    private fun onMsl(m: Double, atS: Double) {
+        mslM = m
+        mslAtS = atS
+        if (recording && rideFirstMslM == null) rideFirstMslM = m
+        val newest = ride.samples.lastOrNull()
+        if ((newest?.get("t") as? Number)?.toDouble()?.let { kotlin.math.abs(it - atS) < 0.01 } == true) {
+            ride.feedExtra(mapOf("alt_msl_m" to Py.round(m, 1)))
+        }
+    }
+
+    /** Sea-level elevation, only while it is fresh: an old one is not where she is now. */
+    private fun elevationM(nowS: Double): Double? =
+        mslM?.takeIf { mslAtS?.let { nowS - it <= MSL_FRESH_S } == true }
+
+    /**
+     * Climb since the RIDE began, never since the app opened - a baseline taken
+     * in the garage an hour before would be wrong in a way she would not notice.
+     * The barometer where there is one (good to about a metre, relatively), else
+     * the change in sea-level elevation. Null when not recording.
+     */
+    private fun climbSinceStartM(): Double? {
+        if (!recording) return null
+        motion.relativeM?.let { return it }
+        val first = rideFirstMslM ?: return null
+        return mslM?.let { it - first }
     }
 
     @Synchronized
@@ -223,13 +328,46 @@ object Telemetry {
             // No permission yet, or no GPS: the screen says which.
             Log.w(TAG, "no GPS updates: ${e.message}")
         }
-        val sm = app.getSystemService(Context.SENSOR_SERVICE) as SensorManager
-        for ((type, name) in SENSORS) {
-            val sensor = sm.getDefaultSensor(type)
-            if (sensor == null) motion.onError(name, "this phone has no $name")
-            else sm.registerListener(sensorListener, sensor, SENSOR_PERIOD_US, h)
-        }
+        resubscribe()
         h.postDelayed(dashTick, DASH_EVERY_MS)
+    }
+
+    /** Which sensors should run now, and how fast. */
+    private fun wanted(): Map<Int, Int> {
+        val all = SENSORS.associate { it.type to SENSOR_PERIOD_US }
+        // A recording logs every channel, and its peaks need 50 Hz. With the pref
+        // off, or before the gauges have said what they read, run everything.
+        if (recording || !onDemand) return all
+        val need = dashChannels ?: return all
+        return SENSORS.filter { s -> s.channels.any { it in need } }.associate { it.type to SENSOR_UI_US }
+    }
+
+    /** Ride thread. Subscribe and unsubscribe until what runs is what is wanted. */
+    private fun resubscribe() {
+        if (!listening) return
+        val h = handler ?: return
+        val sm = app.getSystemService(Context.SENSOR_SERVICE) as SensorManager
+        val want = wanted()
+        for ((type, period) in subscribed.toMap()) {
+            if (want[type] == period) continue
+            sm.getDefaultSensor(type)?.let { sm.unregisterListener(sensorListener, it) }
+            subscribed.remove(type)
+        }
+        for (s in SENSORS) {
+            val period = want[s.type] ?: continue
+            if (subscribed[s.type] == period) continue
+            val sensor = sm.getDefaultSensor(s.type)
+            if (sensor == null) {
+                motion.onError(s.name, "this phone has no ${s.name}")
+            } else {
+                sm.registerListener(sensorListener, sensor, period, h)
+                subscribed[s.type] = period
+            }
+        }
+        if (debuggable) {
+            val on = SENSORS.filter { it.type in subscribed }.map { "${it.name}@${1_000_000 / subscribed.getValue(it.type)}Hz" }
+            Log.d(TAG, "sensors (rec=$recording onDemand=$onDemand) ${if (on.isEmpty()) "none" else on.joinToString()}")
+        }
     }
 
     private fun unlisten() {
@@ -237,6 +375,7 @@ object Telemetry {
         listening = false
         (app.getSystemService(Context.LOCATION_SERVICE) as LocationManager).removeUpdates(gps)
         (app.getSystemService(Context.SENSOR_SERVICE) as SensorManager).unregisterListener(sensorListener)
+        subscribed.clear()
         handler?.removeCallbacks(dashTick)
     }
 
@@ -259,12 +398,14 @@ object Telemetry {
         // GPS climb only where the barometer gave none, as ride.py:473-479 does.
         if ("climb_mps" !in extra && gpsClimbMps != null) extra["climb_mps"] = Py.round(gpsClimbMps, 2)
         ride.feedExtra(extra)
+        requestMsl(fix)
         publishDash()
         if (debuggable) {
             // Debug builds only: one line per fix, so a test can see the gauges'
             // numbers and the recording state without a screenshot.
             val d = _dash.value
             Log.d(TAG, "fix rec=$recording rows=${ride.count} speed=${d.speedMs} alt=${d.altM} " +
+                "msl=${elevationM(t)} sinceStart=${climbSinceStartM()} " +
                 "tilt=${d.tiltDeg} lean=${d.leanDeg} gLat=${d.gLat} climb=${d.climbMps}")
         }
         motion.resetPeaks()
