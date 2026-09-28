@@ -51,24 +51,16 @@ pressure never changes, so that path is only tested on a real phone.
 Closes when: checked on her phone against a known height (a summit marker), and
 the Moto G's Android version is known (adb shell getprop ro.build.version.release).
 
-## No map credits on screen, by her decision - they must come back before sharing
+## Map credits are in Settings/About only, by her decision
 
 The OpenStreetMap (ODbL) credit is not on the map: nvii, 2026-09-28, "this is a
-personal project ... i don't want it on my screen". The credits are kept as a
-record (app/src/main/assets/styles/SOURCE.txt, glyphs/OFL-Archivo.txt, and the
-style's own source attribution) but are shown nowhere.
+personal project ... i don't want it on my screen". Settings > About lists OSM
+(ODbL), Protomaps (CC0), MapLibre (BSD-2) and Archivo (OFL), and the record is
+kept in app/src/main/assets/styles/SOURCE.txt and glyphs/OFL-Archivo.txt. Her
+decision covers HER screen on HER phones; it does not travel with the APK.
 
-Closes when: Settings/About shows them - required before the app goes to anyone
-beyond her own phones.
-
-## Buildings have no on-screen switch yet
-
-The buildings layer ships hidden (default off, her choice) and
-RideMapController.setBuildings() flips it, persisted as the "buildings" pref.
-There is no Settings screen yet, so she cannot turn it on; only a debug-build
-test intent can (`--ez buildings true`).
-
-Closes when: Settings has the toggle.
+Closes when: never, as such - before the app goes to anyone else, decide again
+whether the map itself must carry the credit.
 
 ## Sunlight's warning colours clear their floor by 0.06 - check it outdoors
 
@@ -82,4 +74,3 @@ has proved it on her screen in direct sun. Sunlight is also the theme minion
 
 Closes when: Sunlight is read on her phone outdoors, in sun, over a road - or
 the glass goes denser (0.95 gives bad 7.52, computed) if it is marginal there.
-

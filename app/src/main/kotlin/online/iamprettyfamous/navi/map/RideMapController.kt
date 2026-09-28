@@ -279,6 +279,11 @@ class RideMapController(context: Context) {
             hadFix = true
             follow()
         }
+        if (appContext.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE != 0) {
+            // Debug builds: the camera as it really is, so "the map was at riding
+            // zoom" is read back rather than assumed.
+            map?.cameraPosition?.let { Log.d(TAG, "camera zoom=%.2f bearing=%.1f".format(it.zoom, it.bearing)) }
+        }
     }
 
     private var hadFix = false
