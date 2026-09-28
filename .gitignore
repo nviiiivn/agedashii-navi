@@ -1,0 +1,10 @@
+.gradle/
+.kotlin/
+build/
+local.properties
+*.apk
+*.aab
+# Built map and routing data: hundreds of MB, rebuilt from scripts, never committed.
+mapdata/out/
+routingdata/out/
+*.pmtiles

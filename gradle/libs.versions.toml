@@ -1,0 +1,35 @@
+# Every version here was read from Maven Central / Google Maven on 2026-09-27,
+# not guessed. AGP 9.4 needs Gradle >= 9.6.0, JDK 17 and build-tools 36.0.0
+# (AGP 9.4.0 release notes, "Compatibility").
+[versions]
+agp = "9.4.1"
+kotlin = "2.4.20"
+compose-bom = "2026.09.00"
+activity-compose = "1.13.0"
+core-ktx = "1.19.1"
+coroutines = "1.11.0"
+serialization-json = "1.11.0"
+junit-bom = "6.1.3"
+# 13.6.1 is the highest stable. 13.5.2 was published later but is a backport.
+maplibre = "13.6.1"
+# Valhalla 3.6.3 inside. The routing tiles are built with that exact version,
+# so do NOT bump this without telling whoever builds the tiles (minion 5).
+valhalla-mobile = "0.6.3"
+
+[libraries]
+androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "core-ktx" }
+androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "activity-compose" }
+compose-bom = { module = "androidx.compose:compose-bom", version.ref = "compose-bom" }
+compose-foundation = { module = "androidx.compose.foundation:foundation" }
+compose-ui = { module = "androidx.compose.ui:ui" }
+kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "coroutines" }
+kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "serialization-json" }
+maplibre-android = { module = "org.maplibre.gl:android-sdk", version.ref = "maplibre" }
+valhalla-mobile = { module = "io.github.rallista:valhalla-mobile", version.ref = "valhalla-mobile" }
+junit-bom = { module = "org.junit:junit-bom", version.ref = "junit-bom" }
+junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher" }
+
+[plugins]
+android-application = { id = "com.android.application", version.ref = "agp" }
+kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
