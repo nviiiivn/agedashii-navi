@@ -5,6 +5,13 @@
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
+    <!-- Recording (phase 3): a location-type foreground service that keeps the
+         CPU awake while the screen is off, with its notification. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
     <!-- Rule 1 is "works with no signal, no exception", so for now the app is
          not allowed onto the network at all: MapLibre's library manifest asks
          for INTERNET and this strips it. Anything that silently needed the
@@ -28,5 +35,10 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <service
+            android:name=".record.RideService"
+            android:exported="false"
+            android:foregroundServiceType="location" />
     </application>
 </manifest>

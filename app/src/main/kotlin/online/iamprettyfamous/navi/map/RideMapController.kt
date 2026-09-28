@@ -7,7 +7,6 @@ import android.os.Bundle
 import android.util.Log
 import android.view.Gravity
 import androidx.core.content.ContextCompat
-import org.json.JSONObject
 import org.maplibre.android.MapLibre
 import org.maplibre.android.camera.CameraPosition
 import org.maplibre.android.geometry.LatLng
@@ -21,6 +20,8 @@ import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.MapView
 import org.maplibre.android.maps.Style
 import online.iamprettyfamous.navi.R
+import online.iamprettyfamous.navi.core.map.PmtilesHeader
+import online.iamprettyfamous.navi.core.map.StylePatch
 import java.io.File
 
 /**
@@ -41,7 +42,12 @@ class RideMapController(context: Context) {
     }
 
     val tiles: File? = MapFiles.tilesFile(appContext.getExternalFilesDir(null))
-    val header: PmtilesHeader? = tiles?.takeIf { it.isFile }?.let { PmtilesHeader.read(it) }
+
+    // Read when the style loads rather than once at start, so a map copied in
+    // while the app was open is found on the next resume (see recheck()).
+    private var header: PmtilesHeader? = null
+    private var lastProblem: Problem? = null
+    private var cameraSet = false
 
     val mapView = MapView(context)
     private var map: MapLibreMap? = null
@@ -77,14 +83,19 @@ class RideMapController(context: Context) {
     private fun configure(m: MapLibreMap) {
         m.uiSettings.isLogoEnabled = false
         // OSM's licence needs the credit reachable; the "i" button keeps it,
-        // top right, clear of the round buttons along the bottom.
+        // top right, below the record row so a wide status line can't cover it.
         m.uiSettings.isAttributionEnabled = true
         m.uiSettings.attributionGravity = Gravity.TOP or Gravity.END
         val dp = appContext.resources.displayMetrics.density
-        m.uiSettings.setAttributionMargins(0, (56 * dp).toInt(), (12 * dp).toInt(), 0)
+        m.uiSettings.setAttributionMargins(0, (150 * dp).toInt(), (12 * dp).toInt(), 0)
         m.uiSettings.isCompassEnabled = false
         m.setMaxZoomPreference(MAX_ZOOM)
-        val h = header ?: return
+    }
+
+    /** Bounds and a starting view from the archive, once it is known. */
+    private fun placeCamera(m: MapLibreMap, h: PmtilesHeader) {
+        if (cameraSet) return
+        cameraSet = true
         m.setMinZoomPreference(maxOf(h.minZoom.toDouble(), MIN_ZOOM))
         m.setLatLngBoundsForCameraTarget(LatLngBounds.from(h.north, h.east, h.south, h.west))
         m.cameraPosition = CameraPosition.Builder()
@@ -101,44 +112,40 @@ class RideMapController(context: Context) {
             // A storage folder made by `adb shell` before the app ever ran is
             // one the app cannot read (minion 3 reproduced it three times), so
             // a copied map looks absent. Say that, not "copy the file".
-            val readable = appContext.getExternalFilesDir(null)?.list() != null
-            return onProblem(if (readable) Problem.NO_TILES else Problem.UNREADABLE_STORAGE)
+            // The files folder itself stays listable (emulator, 2026-09-27); it is
+            // the adb-made map/ inside it that the app cannot see into.
+            val ext = appContext.getExternalFilesDir(null)
+            val mapDir = ext?.let { java.io.File(it, "map") }
+            val present = mapDir != null && (mapDir.exists() || ext.list()?.contains("map") == true)
+            val unreadable = present && mapDir.list() == null
+            return problem(if (unreadable) Problem.UNREADABLE_STORAGE else Problem.NO_TILES)
         }
-        val h = header ?: return onProblem(Problem.BAD_TILES)
+        val h = header ?: PmtilesHeader.read(file)?.also { header = it } ?: return problem(Problem.BAD_TILES)
+        placeCamera(m, h)
         val json = MapStyles.load(appContext.assets, key, file)
             ?: MapStyles.load(appContext.assets, "night", file)
-            ?: return onProblem(Problem.NO_STYLE)
-        onProblem(null)
-        m.setStyle(withBikes(Style.Builder().fromJson(withRealZoomRange(json, h)))) { s ->
+            ?: return problem(Problem.NO_STYLE)
+        problem(null)
+        val patched = StylePatch.realZoomRange(json, h.minZoom, h.maxZoom)
+        for (change in patched.changes) Log.w(TAG, "$change (from the archive)")
+        m.setStyle(withBikes(Style.Builder().fromJson(patched.json))) { s ->
             style = s
             if (locationWanted) activateLocation(s)
         }
     }
 
+    private fun problem(p: Problem?) {
+        lastProblem = p
+        onProblem(p)
+    }
+
     /**
-     * Sets every PMTiles source's zoom range to the archive's real one and makes
-     * sure the OSM credit is present. Whatever the style file says, the data
-     * decides: a maxzoom above the data's asks for tiles that do not exist and
-     * draws nothing, which is exactly how the Flet map went blank above z15.
+     * Looks again for the map after the app comes back to the front. Without
+     * this, "No map file" outlived the problem: copying the map in while the
+     * message showed changed nothing until a restart.
      */
-    private fun withRealZoomRange(json: String, h: PmtilesHeader): String {
-        val root = JSONObject(json)
-        val sources = root.optJSONObject("sources") ?: return json
-        for (name in sources.keys()) {
-            val src = sources.optJSONObject(name) ?: continue
-            if (!src.optString("url").startsWith("pmtiles://")) continue
-            // Compared as numbers: JSON may say 14 or 14.0, and both are right.
-            val said = src.opt("maxzoom")
-            if ((said as? Number)?.toDouble() != h.maxZoom.toDouble()) {
-                Log.w(TAG, "source $name maxzoom $said -> ${h.maxZoom} (from the archive)")
-            }
-            src.put("minzoom", h.minZoom)
-            src.put("maxzoom", h.maxZoom)
-            if (!src.optString("attribution").contains("OpenStreetMap")) {
-                src.put("attribution", "© OpenStreetMap contributors")
-            }
-        }
-        return root.toString()
+    fun recheck() {
+        if (lastProblem != null && lastProblem != Problem.NO_STYLE) applyTheme(theme)
     }
 
     /** Call once location permission is granted. Safe before the style loads. */
