@@ -35,6 +35,8 @@ import online.iamprettyfamous.navi.core.dash.Anchor
 import online.iamprettyfamous.navi.core.dash.Hud
 import online.iamprettyfamous.navi.core.dash.Layout
 import online.iamprettyfamous.navi.dash.HudOverlay
+import online.iamprettyfamous.navi.core.theme.Role
+import online.iamprettyfamous.navi.dash.ink
 import online.iamprettyfamous.navi.dash.TurnBannerView
 import online.iamprettyfamous.navi.core.dash.TurnBanner
 import online.iamprettyfamous.navi.record.RecState
@@ -393,7 +395,7 @@ class MainActivity : ComponentActivity() {
                 // Ending a route takes two taps, as stopping a recording does. Above
                 // follow, so follow is the one that comes and goes at the bottom.
                 if (nav.route != null) {
-                    RoundButton(if (endArmedAt != null) "End?" else "End", p, if (endArmedAt != null) p.bad else p.text2) {
+                    RoundButton(if (endArmedAt != null) "End?" else "End", p, if (endArmedAt != null) p.bad else p.ink(Role.TEXT2)) {
                         onEndTap()
                     }
                 }

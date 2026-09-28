@@ -21,10 +21,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import online.iamprettyfamous.navi.core.dash.DashColours
 import online.iamprettyfamous.navi.core.geo.LatLon
 import online.iamprettyfamous.navi.core.guidance.Guidance
 import online.iamprettyfamous.navi.core.telemetry.Physics
+import online.iamprettyfamous.navi.core.theme.Role
 import online.iamprettyfamous.navi.core.theme.TypeScale
+import online.iamprettyfamous.navi.dash.ink
 import online.iamprettyfamous.navi.routing.Navigator
 
 /**
@@ -40,7 +43,7 @@ fun RouteStrip(nav: Navigator.Nav, p: Palette, imperial: Boolean) {
     val left = Guidance.distanceText(nav.status?.leftM ?: route.distanceM, imperial)
     Card(p) {
         Line("${route.source} route · $left left" + if (nav.reroutes > 0) " · re-routed" else "",
-            p.text2, TypeScale.MID_SP, FontWeight.Bold)
+            p.ink(Role.TEXT2), TypeScale.MID_SP, FontWeight.Bold)
         nav.gap?.let { gap ->
             val where = gap.street?.let { "at $it, " } ?: ""
             Line("Route ends ${where}${Guidance.distanceText(gap.metres, imperial)} from your pin",
@@ -78,7 +81,7 @@ fun PinBand(
     else listOfNotNull("%.5f, %.5f".format(pin.lat, pin.lon), away).joinToString(" · ")
     Card(p) {
         Line(title, p.text, TypeScale.MID_SP, FontWeight.ExtraBold)
-        Line(detail, if (failed) p.warn else p.text2, TypeScale.MID_SP, maxLines = 3)
+        Line(detail, if (failed) p.warn else p.ink(Role.TEXT2), TypeScale.MID_SP, maxLines = 3)
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Button(if (failed) "Try again" else "Route here", p, primary = true, enabled = !finding,
                 modifier = Modifier.weight(1f), onClick = onRoute)
@@ -115,7 +118,9 @@ private fun Button(label: String, p: Palette, primary: Boolean, enabled: Boolean
     Box(
         modifier.heightIn(min = TypeScale.TOUCH_DP.dp)
             .background(if (lit) p.accent else p.bg, shape)
-            .border(if (primary) 2.dp else 1.dp, if (primary) p.accent else p.border, shape)
+            // The round buttons' ring: a bg fill with a hairline border was
+            // 1.1-1.3:1 on the card in the dark themes, a control found by touch.
+            .border(2.dp, p[DashColours.CONTROL_RING], shape)
             .clickable(enabled = enabled, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
