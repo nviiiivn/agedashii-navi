@@ -139,6 +139,7 @@ from 300 Bay Area trips, and Valhalla is silent at 138 of 150 of those, so
 emit a slight in 11-20 degrees (12 of 150), this app says slight and the Flet
 app says continue.
 
-Closes when: an offline cue separates those 12 (minion 4, time-boxed), or
-accepted as is - approved by AGEDASHII, 2026-09-28.
+ACCEPTED as is by AGEDASHII, 2026-09-28: a different word at a gentle bend
+in one narrow band is a cost carried for good. Nothing to close; a cheap
+offline cue, if minion 4 finds one, is a bonus.
 
