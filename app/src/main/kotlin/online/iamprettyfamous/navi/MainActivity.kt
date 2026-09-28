@@ -249,12 +249,11 @@ class MainActivity : ComponentActivity() {
             HudOverlay(if (dashOn) Hud.plan(dash, hudLayout, wide, anchor) else null, p, linesDp = linesDp)
 
             // Top left, one column of round buttons (spec section 03), so the
-            // bottom edge belongs to the ribbon. Record first, where the spec
-            // puts it under the future menu, with the recording line and the
-            // status message BESIDE it and out of the column's flow: a line
-            // appearing never moves a button, never pushes one off screen, and
-            // the dash clears all of it through ButtonColumn. Theme, bike and
-            // layout are temporary until Settings exists.
+            // bottom edge belongs to the ribbon: the menu first, record under it
+            // (ButtonColumn.RECORD_SLOT) with the recording line and the status
+            // message BESIDE it and out of the column's flow - a line appearing
+            // never moves a button, never pushes one off screen, and the dash
+            // clears all of it through ButtonColumn.
             ButtonColumnLayout(
                 onLinesHeight = { linesDp = it },
                 lines = {
@@ -267,12 +266,10 @@ class MainActivity : ComponentActivity() {
                     message(problem, locationGranted, fixAge)?.let { Chip(it, p) }
                 },
             ) {
+                RoundButton("☰", p) { settingsOpen = true }
                 RoundButton(if (rec.recording) "■" else "●", p, if (rec.recording) p.bad else p.accent) {
                     onRecordTap()
                 }
-                // Theme, bike and layout live in Settings now; the ☰ moves to the
-                // top of the column in minion 2's ButtonColumn reorder (spec 03).
-                RoundButton("☰", p) { settingsOpen = true }
                 if (locationGranted && !following) RoundButton(p, { map.follow() }) { FollowGlyph(p.accent) }
             }
 

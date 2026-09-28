@@ -32,8 +32,8 @@ import online.iamprettyfamous.navi.core.theme.TypeScale
 import kotlin.math.ceil
 
 /**
- * The round-button column down the start edge (spec section 03): record with
- * its lines beside it, then theme, bike, layout and follow. Its geometry is
+ * The round-button column down the start edge (spec section 03): the menu,
+ * then record with its lines beside it, then follow when the map has let go. Its geometry is
  * here, once, because the dash has to keep clear of it and must not drift from
  * it. The Flet app let its gauges run under these buttons - the same fault as
  * its menu over the turn-by-turn band, which BAND_INSET fixed there.
@@ -51,8 +51,14 @@ object ButtonColumn {
     /** Where the dash may start beside the column: the edge, a button, one gap. */
     const val CLEAR_DP = EDGE_DP + TypeScale.TOUCH_DP + GAP_DP
 
+    /** Record's place in the column, from 0: spec 03 puts the menu first and record under it. */
+    const val RECORD_SLOT = 1
+
+    /** Where the lines beside record start, from the top: level with record. */
+    const val LINES_TOP_DP = EDGE_DP + RECORD_SLOT * (TypeScale.TOUCH_DP + GAP_DP)
+
     /** Where the dash may start below the record button. */
-    const val BELOW_RECORD_DP = EDGE_DP + TypeScale.TOUCH_DP + GAP_DP
+    const val BELOW_RECORD_DP = LINES_TOP_DP + TypeScale.TOUCH_DP + GAP_DP
 
     /** Where the lines beside record start. */
     const val LINES_START_DP = EDGE_DP + TypeScale.TOUCH_DP + BESIDE_DP
@@ -65,14 +71,15 @@ object ButtonColumn {
     const val LINES_MAX_DP = 360
 
     /** Where the dash may start below the lines, [linesDp] tall as measured - they are text, so never assumed. */
-    fun belowLines(linesDp: Int): Int = if (linesDp == 0) 0 else EDGE_DP + linesDp + GAP_DP
+    fun belowLines(linesDp: Int): Int = if (linesDp == 0) 0 else LINES_TOP_DP + linesDp + GAP_DP
 }
 
 /**
  * The column and the lines beside record, positioned in one place: MainActivity
  * fills it, and so does the screenshot test, so the pictures show the real
- * layout. The lines sit OUT of the column's flow: one appearing never moves a
- * button under a glove. [onLinesHeight] reports their height in dp, because
+ * layout. [buttons] must put record at [ButtonColumn.RECORD_SLOT]. The lines
+ * sit OUT of the column's flow: one appearing never moves a button under a
+ * glove. [onLinesHeight] reports their height in dp, because
  * the dash moves out from under them.
  */
 @Composable
@@ -89,7 +96,7 @@ fun BoxScope.ButtonColumnLayout(
     )
     Column(
         Modifier.align(Alignment.TopStart).safeDrawingPadding()
-            .padding(start = ButtonColumn.LINES_START_DP.dp, top = ButtonColumn.EDGE_DP.dp, end = ButtonColumn.EDGE_DP.dp)
+            .padding(start = ButtonColumn.LINES_START_DP.dp, top = ButtonColumn.LINES_TOP_DP.dp, end = ButtonColumn.EDGE_DP.dp)
             .widthIn(max = ButtonColumn.LINES_MAX_DP.dp)
             .onSizeChanged { onLinesHeight(ceil(it.height / density.density).toInt()) },
         verticalArrangement = Arrangement.spacedBy(4.dp),

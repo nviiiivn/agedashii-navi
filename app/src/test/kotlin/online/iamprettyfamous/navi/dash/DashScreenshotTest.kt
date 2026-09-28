@@ -97,10 +97,8 @@ class DashScreenshotTest {
                     Chip("GPS lost 12 s ago", p)
                 },
             ) {
+                RoundButton("☰", p) {}
                 RoundButton("■", p, p.bad) {}
-                RoundButton(p.name.take(2), p) {}
-                RoundButton("Y", p) {}
-                RoundButton(layout.title.take(2), p) {}
                 RoundButton(p, {}) { FollowGlyph(p.accent) }
             }
         }

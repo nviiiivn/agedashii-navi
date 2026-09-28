@@ -417,9 +417,10 @@ fun HudOverlay(hud: Hud?, p: Palette, modifier: Modifier = Modifier, linesDp: In
  * edge clears the buttons and the record button; anything at the top also
  * clears the lines beside record, [linesDp] tall as measured - the recording
  * line stays up the whole ride and runs most of a portrait screen wide, and a
- * status line under it comes and goes. The column is about 350 dp tall: clear
- * of the bottom of a portrait screen, but the whole height of a landscape one,
- * so the bottom corner and the strip clear it only there.
+ * status line under it comes and goes. In portrait the column ends far above
+ * the bottom corner and the strip; in landscape a short screen puts them level
+ * with it (menu, record and follow reach ~210 dp of ~370), so there they clear
+ * it too - kept even where it fits today, because the next button would not.
  */
 private fun clearance(region: Region, hud: Hud, linesDp: Int): Pair<Dp, Dp> {
     val beside = ButtonColumn.CLEAR_DP.dp
