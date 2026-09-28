@@ -5,7 +5,10 @@ plugins {
 
 android {
     namespace = "online.iamprettyfamous.navi"
-    compileSdk = 36
+    // Compose BOM 2026.09.00 and core-ktx 1.19.1 refuse to compile against
+    // less than 37. Compile only: targetSdk stays 36 until 37's runtime
+    // behaviour changes have been read.
+    compileSdk = 37
 
     defaultConfig {
         // A new id, so this installs beside the Flet app
