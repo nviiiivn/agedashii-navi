@@ -325,6 +325,9 @@ class MainActivity : ComponentActivity() {
         if (locationGranted) map.enableLocation() else askLocation.launch(FINE_OR_COARSE)
 
         Router.load(this)
+        if (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0) {
+            Navigator.debugDir = java.io.File(getExternalFilesDir(null) ?: filesDir, "debug")
+        }
         PlacesStore.open(this)
         // The map data this APK carries, unpacked on first start (and after an
         // update with new data); then everything that reads it looks again.
