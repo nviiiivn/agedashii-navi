@@ -302,6 +302,12 @@ class RideMapController(context: Context) {
         onProblem(p)
     }
 
+    /** A new map file is in place (DataPack): read its header again and redraw. */
+    fun reloadTiles() {
+        header = null
+        applyTheme(theme)
+    }
+
     /**
      * Looks again for the map after the app comes back to the front. Without
      * this, "No map file" outlived the problem: copying the map in while the

@@ -61,6 +61,7 @@ import online.iamprettyfamous.navi.ui.palette
 import online.iamprettyfamous.navi.routing.Navigator
 import online.iamprettyfamous.navi.voice.Voice
 import online.iamprettyfamous.navi.places.PlacesStore
+import online.iamprettyfamous.navi.data.DataPack
 import online.iamprettyfamous.navi.ui.SearchGlyph
 import online.iamprettyfamous.navi.ui.WhereToPanel
 import online.iamprettyfamous.navi.ui.PinBand
@@ -325,6 +326,13 @@ class MainActivity : ComponentActivity() {
 
         Router.load(this)
         PlacesStore.open(this)
+        // The map data this APK carries, unpacked on first start (and after an
+        // update with new data); then everything that reads it looks again.
+        DataPack.ensure(this) {
+            map.reloadTiles()
+            Router.reload(this)
+            PlacesStore.open(this)
+        }
         Voice.enabled = settings.voice
         Voice.streets = settings.voiceStreets
         Voice.start(this)
@@ -379,6 +387,7 @@ class MainActivity : ComponentActivity() {
         BackHandler(enabled = !settingsOpen && pin != null && !whereToOpen) { cancelPin() }
         BackHandler(enabled = whereToOpen && !settingsOpen) { whereToOpen = false }
         val places by PlacesStore.state.collectAsState()
+        val dataPack by DataPack.state.collectAsState()
         Box(Modifier.fillMaxSize().background(p.bg)) {
             AndroidView(factory = { map.mapView }, modifier = Modifier.fillMaxSize())
 
@@ -445,7 +454,7 @@ class MainActivity : ComponentActivity() {
                     // including why there is no rpm, rather than a blank that looks broken.
                     if (micState.on || micState.error.isNotEmpty()) Chip(micAccount(micState), p)
                     if (endArmedAt != null) Chip("Tap End again to end the route", p, edge = p.bad, ink = p.bad)
-                    message(problem, locationGranted, fixAge)?.let { Chip(it, p) }
+                    message(problem, locationGranted, fixAge, dataPack)?.let { Chip(it, p) }
                 },
             ) {
                 RoundButton("☰", p) { settingsOpen = true }
@@ -511,7 +520,9 @@ class MainActivity : ComponentActivity() {
     }
 
     /** One honest line about why the map or the bike is not where she expects. */
-    private fun message(problem: Problem?, granted: Boolean, fixAge: Double?): String? = when {
+    private fun message(problem: Problem?, granted: Boolean, fixAge: Double?, data: DataPack.State): String? = when {
+        data.busy -> "Unpacking the map for the first time: %,d of %,d MB".format(data.doneBytes / 1_000_000, data.totalBytes / 1_000_000)
+        data.error.isNotEmpty() -> data.error
         problem == Problem.NO_TILES ->
             "No map file. Copy ${MapFiles.TILES_NAME} to\n${map.tiles?.path ?: "app storage"}"
         problem == Problem.UNREADABLE_STORAGE ->

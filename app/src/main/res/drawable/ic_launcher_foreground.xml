@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Her yellow bike, the same drawable as on the map, inset into the adaptive
+     icon's safe zone (the middle 66 of 108 dp) so no launcher mask cuts it. -->
+<inset xmlns:android="http://schemas.android.com/apk/res/android"
+    android:drawable="@drawable/bike_yellow"
+    android:inset="26%" />
