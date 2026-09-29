@@ -208,6 +208,17 @@ class VoiceLinesTest {
     }
 
     @Test
+    fun `open - her line on launch, or nothing at all`() {
+        assertEquals("open", VoiceLines.parse("open.mp3").first)
+        assertTrue("open" in VoiceLines.FIXED)
+        assertNull(VoiceLines.standIn("open"), "no robot saying the app has opened")
+        assertEquals(emptyList(), VoiceLines.situation("open", have))
+        assertEquals(listOf(Item.Clip("open", null)), VoiceLines.situation("open", have + "open"))
+        assertEquals(VoiceLines.Source.SILENT, VoiceLines.source("open", have))
+        assertEquals("open", Character.wildSlot("wild-open-where-are-we"))
+    }
+
+    @Test
     fun `situations - hers, the phone's, or for speeding nothing`() {
         assertEquals(listOf(Item.Clip("offroute", "Off route.")), VoiceLines.situation("offroute", have))
         assertEquals(listOf(Item.Speak("Re-routing.")), VoiceLines.situation("rerouting", emptySet()))

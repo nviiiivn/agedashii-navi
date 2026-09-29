@@ -345,6 +345,7 @@ class MainActivity : ComponentActivity() {
         Voice.character.on = settings.voiceCharacter
         Voice.character.taps = settings.voiceTaps
         Voice.start(this)
+        Voice.opening()
         setContent { Ride() }
         // A ride Android cut off while the app was dead is found and reported here.
         RideService.recoverInterrupted(this)

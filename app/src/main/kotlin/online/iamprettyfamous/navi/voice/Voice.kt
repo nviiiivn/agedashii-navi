@@ -294,6 +294,22 @@ object Voice {
         play(VoiceLines.refusal(reason) + listOfNotNull(sorry), "refused: $reason${sorry?.let { " | ${it.name}" } ?: ""}")
     }
 
+    @Volatile private var opened = false
+
+    /**
+     * Her line when the app opens, once per process (a cold launch, not a
+     * rotation or a return from Settings): her "open", else a wild one with
+     * Character lines on, else the built-in, else nothing. Never over a prompt.
+     */
+    fun opening() {
+        if (opened) return
+        opened = true
+        val have = clipNames()
+        val hers = herNames()
+        val items = VoiceLines.situation("open", character.slots(have, hers)) { character.voiceFor(it, hers, have) }
+        if (items.isNotEmpty()) play(items, "open", idleOnly = true)
+    }
+
     /** A tap outside the ride's controls (opening Where to, picking a place): rarely a line, never over a prompt. */
     fun tap(what: String) {
         val line = character.tap(clipNames()) ?: return

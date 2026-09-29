@@ -47,6 +47,9 @@ object VoiceLines {
      */
     val SITUATIONS: Map<String, String?> = linkedMapOf(
         "offroute" to "Off route.", "rerouting" to "Re-routing.", "start" to "Starting the route.", "speeding" to null,
+        // Her line when the app opens ("That's amazing, where are we?"): hers or
+        // nothing - a robot saying the app has opened is noise.
+        "open" to null,
     )
 
     /** Every fixed name: the twelve maneuvers, then the situations. Distances are open-ended beside them. */
