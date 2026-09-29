@@ -95,6 +95,11 @@ object Navigator {
         }
     }
 
+    /** Her "Off route after" choice, in metres. */
+    fun setOffRouteM(metres: Int) {
+        synchronized(lock) { follower.offrouteM = metres.toDouble() }
+    }
+
     /** Stop navigating: no destination, no route, no banner. */
     fun clear() {
         synchronized(lock) {

@@ -2,6 +2,7 @@ package online.iamprettyfamous.navi
 
 import android.Manifest
 import android.content.Intent
+import android.content.pm.ActivityInfo
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.os.Build
@@ -60,6 +61,7 @@ import online.iamprettyfamous.navi.ui.RoundButton
 import online.iamprettyfamous.navi.ui.Palette
 import online.iamprettyfamous.navi.ui.palette
 import online.iamprettyfamous.navi.routing.Navigator
+import online.iamprettyfamous.navi.core.daylight.Daylight
 import online.iamprettyfamous.navi.routing.GuideService
 import online.iamprettyfamous.navi.voice.Voice
 import online.iamprettyfamous.navi.places.PlacesStore
@@ -100,13 +102,23 @@ class MainActivity : ComponentActivity() {
     /** Applies a changed setting at once - never "from the next start". */
     private fun applySetting(what: Changed) {
         when (what) {
-            Changed.THEME -> { theme = settings.theme; map.applyTheme(theme) }
+            Changed.THEME -> {
+                // Picking a theme by hand ends following the sun (the Flet app's rule).
+                if (settings.autoTheme) { settings.autoTheme = false; sunPhase = null; brightness(null) }
+                theme = settings.theme; map.applyTheme(theme)
+            }
+            Changed.AUTO_THEME -> {
+                sunPhase = null
+                if (settings.autoTheme) followSun() else { brightness(null); theme = settings.theme; map.applyTheme(theme) }
+            }
             Changed.BIKE -> { bike = settings.bike; map.setBike(bike) }
             Changed.BUILDINGS -> map.setBuildings(settings.buildings)
             Changed.NORTH_UP -> map.setNorthUp(settings.northUp)
             Changed.KEEP_AWAKE -> keepAwake(settings.keepAwake)
             Changed.HUD -> { hudLayout = Layout.of(settings.hud); dashOn = settings.dash }
             Changed.TELEMETRY -> Telemetry.refreshPrefs(this)
+            Changed.ORIENTATION -> applyOrientation()
+            Changed.OFFROUTE -> Navigator.setOffRouteM(settings.offrouteM)
             Changed.VOICE -> {
                 Voice.enabled = settings.voice
                 Voice.streets = settings.voiceStreets
@@ -136,6 +148,41 @@ class MainActivity : ComponentActivity() {
         RideService.micWanted = true
         RideService.refreshTypes(this)
         Telemetry.setMic(this, true)
+    }
+
+    /** Her "Which way up", held against a lean the accelerometer reads as a rotation. */
+    private fun applyOrientation() {
+        requestedOrientation = when (settings.orientation) {
+            "landscape" -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+            "portrait" -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+            else -> ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        }
+    }
+
+    /** The day's phase last applied, while following the sun. */
+    private var sunPhase: String? = null
+
+    /**
+     * Theme and screen brightness where the sun says, from her position (the
+     * clock before the first fix). Only acts when the phase changes - four
+     * times a day - and never stores the theme as her choice.
+     */
+    private fun followSun() {
+        if (!settings.autoTheme) return
+        val fix = Telemetry.fix.value
+        val phase = Daylight.phase(fix?.latitude, fix?.longitude, System.currentTimeMillis() / 1000.0)
+        if (phase == sunPhase) return
+        sunPhase = phase
+        brightness(Daylight.brightnessFor(phase))
+        val want = Daylight.themeFor(phase)
+        if (want != theme) { theme = want; map.applyTheme(want) }
+    }
+
+    /** The window's brightness, or the phone's own with null. */
+    private fun brightness(level: Double?) {
+        window.attributes = window.attributes.apply {
+            screenBrightness = level?.toFloat() ?: WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+        }
     }
 
     private fun keepAwake(on: Boolean) {
@@ -321,8 +368,14 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         // keep_awake defaults on: the screen stays lit while riding.
         keepAwake(settings.keepAwake)
+        applyOrientation()
+        Navigator.setOffRouteM(settings.offrouteM)
 
         theme = prefs.getString("theme", "night") ?: "night"
+        if (settings.autoTheme) {
+            val phase = Daylight.phase(null, null, System.currentTimeMillis() / 1000.0)
+            theme = Daylight.themeFor(phase)
+        }
         bike = prefs.getString("bike", "yellow") ?: "yellow"
         hudLayout = Layout.of(prefs.getString("hud", Layout.DEFAULT.key))
         dashOn = settings.dash
@@ -372,6 +425,13 @@ class MainActivity : ComponentActivity() {
         }
         // The map follows the same fixes the telemetry uses; there is one GPS listener.
         LaunchedEffect(Unit) { Telemetry.fix.collect { it?.let(map::showFix) } }
+        // The sun, once a minute: the phase changes over minutes, not seconds.
+        LaunchedEffect(Unit) {
+            while (true) {
+                followSun()
+                delay(60_000)
+            }
+        }
         val rec by RideService.state.collectAsState()
         // Built on the ride thread from every sensor (minion 1's Telemetry), recording or not.
         val dash by Telemetry.dash.collectAsState()

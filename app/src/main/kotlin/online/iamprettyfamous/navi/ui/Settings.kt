@@ -33,7 +33,7 @@ import online.iamprettyfamous.navi.voice.Voice
 import online.iamprettyfamous.navi.voice.VoicePanel
 
 /** A setting that changed, so the Ride screen can apply it at once. */
-enum class Changed { THEME, BIKE, BUILDINGS, NORTH_UP, KEEP_AWAKE, HUD, TELEMETRY, MIC_ON, MIC_OFF, VOICE }
+enum class Changed { THEME, AUTO_THEME, BIKE, BUILDINGS, NORTH_UP, KEEP_AWAKE, HUD, TELEMETRY, MIC_ON, MIC_OFF, VOICE, ORIENTATION, OFFROUTE }
 
 /**
  * Settings: every preference that does something today, the honest account of
@@ -78,6 +78,12 @@ fun SettingsPanel(
             Choice("Theme", p, PALETTES.map { it.key to it.name }, prefs.theme) {
                 prefs.theme = it; onChanged(Changed.THEME)
             }
+            Choice("Follow the sun", p, OFF_ON, onOff(prefs.autoTheme)) {
+                prefs.autoTheme = it == "on"; onChanged(Changed.AUTO_THEME)
+            }
+            Text("Sunlight by day, Night at dusk, Red night after dark, and the screen dimmed to match - " +
+                "worked out from where you are, with no sensor and no signal. Picking a theme above turns this off.",
+                p, size = 12, faint = true)
             Choice("Bike", p, listOf("yellow" to "Yellow", "black" to "Black"), prefs.bike) {
                 prefs.bike = it; onChanged(Changed.BIKE)
             }
@@ -102,6 +108,13 @@ fun SettingsPanel(
             Choice("Spoken turns", p, OFF_ON, onOff(prefs.voice)) {
                 prefs.voice = it == "on"; onChanged(Changed.VOICE)
             }
+            Choice("Off route after", p, Prefs.OFFROUTE_CHOICES.map { m ->
+                "$m" to if (prefs.imperial) "%d ft".format(Math.round(m * 3.28084 / 10.0) * 10) else "$m m"
+            }, "${prefs.offrouteM}") {
+                prefs.offrouteM = it.toInt(); onChanged(Changed.OFFROUTE)
+            }
+            Text("Three fixes in a row beyond this before it says so, and it has to come back well inside " +
+                "before it stops - otherwise one noisy fix re-routes a corner you took correctly.", p, size = 12, faint = true)
 
             Heading("Your recorded voice", p)
             VoicePanel(p, prefs, rev) { onChanged(Changed.VOICE) }
@@ -120,6 +133,13 @@ fun SettingsPanel(
             Choice("Portrait edge", p, listOf("bottom" to "Bottom", "top" to "Top"), prefs.hudEdge) {
                 prefs.hudEdge = it; onChanged(Changed.HUD)
             }
+            Choice("Which way up", p, listOf("auto" to "Follow the phone", "landscape" to "Always sideways",
+                "portrait" to "Always upright"), prefs.orientation) {
+                prefs.orientation = it; onChanged(Changed.ORIENTATION)
+            }
+            Text("Android's own rotation lock only holds whichever way up the phone was when you tapped it - " +
+                "and a lean into a corner is a rotation to the accelerometer. Lock it here and a sideways " +
+                "mount stays sideways through a hard left.", p, size = 12, faint = true)
 
             Heading("Recording", p)
             Choice("Log rate", p, Prefs.HZ_CHOICES.map { "$it" to "$it / s" }, "${prefs.hz}") {
