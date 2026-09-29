@@ -75,6 +75,8 @@ object PlacesStore {
         val status: String = "",
         val usable: Boolean = false,
         val ms: Long? = null,
+        /** The query [hits] answer - behind [query] while a search runs. */
+        val hitsFor: String = "",
     )
 
     private val _state = MutableStateFlow(State())
@@ -129,7 +131,7 @@ object PlacesStore {
             if (ticket != latest) return@post
             val ms = SystemClock.elapsedRealtime() - t0
             Log.i(TAG, "'$text': ${hits.size} in $ms ms" + (hits.firstOrNull()?.let { " - first ${it.name} (${it.detail})" } ?: ""))
-            _state.value = _state.value.copy(query = text, hits = hits, ms = ms)
+            _state.value = _state.value.copy(query = text, hits = hits, ms = ms, hitsFor = text)
         }
     }
 }

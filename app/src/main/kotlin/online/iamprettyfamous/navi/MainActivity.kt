@@ -2,6 +2,7 @@ package online.iamprettyfamous.navi
 
 import android.Manifest
 import android.content.Intent
+import android.content.pm.ActivityInfo
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.os.Build
@@ -60,11 +61,14 @@ import online.iamprettyfamous.navi.ui.RoundButton
 import online.iamprettyfamous.navi.ui.Palette
 import online.iamprettyfamous.navi.ui.palette
 import online.iamprettyfamous.navi.routing.Navigator
+import online.iamprettyfamous.navi.core.daylight.Daylight
+import online.iamprettyfamous.navi.routing.GuideService
 import online.iamprettyfamous.navi.voice.Voice
 import online.iamprettyfamous.navi.places.PlacesStore
 import online.iamprettyfamous.navi.data.DataPack
 import online.iamprettyfamous.navi.ui.SearchGlyph
 import online.iamprettyfamous.navi.ui.WhereToPanel
+import online.iamprettyfamous.navi.ui.HelpPanel
 import online.iamprettyfamous.navi.ui.PinBand
 import online.iamprettyfamous.navi.ui.RouteStrip
 import androidx.compose.foundation.layout.Arrangement
@@ -99,13 +103,23 @@ class MainActivity : ComponentActivity() {
     /** Applies a changed setting at once - never "from the next start". */
     private fun applySetting(what: Changed) {
         when (what) {
-            Changed.THEME -> { theme = settings.theme; map.applyTheme(theme) }
+            Changed.THEME -> {
+                // Picking a theme by hand ends following the sun (the Flet app's rule).
+                if (settings.autoTheme) { settings.autoTheme = false; sunPhase = null; brightness(null) }
+                theme = settings.theme; map.applyTheme(theme)
+            }
+            Changed.AUTO_THEME -> {
+                sunPhase = null
+                if (settings.autoTheme) followSun() else { brightness(null); theme = settings.theme; map.applyTheme(theme) }
+            }
             Changed.BIKE -> { bike = settings.bike; map.setBike(bike) }
             Changed.BUILDINGS -> map.setBuildings(settings.buildings)
             Changed.NORTH_UP -> map.setNorthUp(settings.northUp)
             Changed.KEEP_AWAKE -> keepAwake(settings.keepAwake)
             Changed.HUD -> { hudLayout = Layout.of(settings.hud); dashOn = settings.dash }
             Changed.TELEMETRY -> Telemetry.refreshPrefs(this)
+            Changed.ORIENTATION -> applyOrientation()
+            Changed.OFFROUTE -> Navigator.setOffRouteM(settings.offrouteM)
             Changed.VOICE -> {
                 Voice.enabled = settings.voice
                 Voice.streets = settings.voiceStreets
@@ -135,6 +149,41 @@ class MainActivity : ComponentActivity() {
         RideService.micWanted = true
         RideService.refreshTypes(this)
         Telemetry.setMic(this, true)
+    }
+
+    /** Her "Which way up", held against a lean the accelerometer reads as a rotation. */
+    private fun applyOrientation() {
+        requestedOrientation = when (settings.orientation) {
+            "landscape" -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+            "portrait" -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+            else -> ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        }
+    }
+
+    /** The day's phase last applied, while following the sun. */
+    private var sunPhase: String? = null
+
+    /**
+     * Theme and screen brightness where the sun says, from her position (the
+     * clock before the first fix). Only acts when the phase changes - four
+     * times a day - and never stores the theme as her choice.
+     */
+    private fun followSun() {
+        if (!settings.autoTheme) return
+        val fix = Telemetry.fix.value
+        val phase = Daylight.phase(fix?.latitude, fix?.longitude, System.currentTimeMillis() / 1000.0)
+        if (phase == sunPhase) return
+        sunPhase = phase
+        brightness(Daylight.brightnessFor(phase))
+        val want = Daylight.themeFor(phase)
+        if (want != theme) { theme = want; map.applyTheme(want) }
+    }
+
+    /** The window's brightness, or the phone's own with null. */
+    private fun brightness(level: Double?) {
+        window.attributes = window.attributes.apply {
+            screenBrightness = level?.toFloat() ?: WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+        }
     }
 
     private fun keepAwake(on: Boolean) {
@@ -185,6 +234,10 @@ class MainActivity : ComponentActivity() {
     private var destName by mutableStateOf<String?>(null)
 
     private var whereToOpen by mutableStateOf(false)
+    private var helpOpen by mutableStateOf(false)
+
+    /** What setting the level last had to say, when it could not. */
+    private var levelNote by mutableStateOf("")
 
     private fun offer(at: LatLon, name: String?, about: String?) {
         pin = at
@@ -193,9 +246,14 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun routeToPin(at: LatLon) {
-        destName = pinName
+        // The name becomes the destination's only once its route exists: set
+        // here, a refused Napa renamed the Chabot route still being followed
+        // ("Route ends at Skyline Boulevard, 300 ft from Napa").
+        pendingName = pinName
         Navigator.go(at, settings.imperial)
     }
+
+    private var pendingName: String? = null
 
     /** The same two-tap guard for ending a route. */
     private var endArmedAt by mutableStateOf<Long?>(null)
@@ -230,9 +288,37 @@ class MainActivity : ComponentActivity() {
         if (armed != null && now - armed < STOP_CONFIRM_MS) {
             stopArmedAt = null
             RideService.stop(this)
+            // Stopped by hand: no automatic restart until the bike has stopped.
+            autoRecordHeld = true
         } else {
             // One glove-tap on the wrong button must not end a ride.
             stopArmedAt = now
+        }
+    }
+
+    // Record automatically: fixes in a row at rolling speed, and whether a
+    // recording she stopped by hand is holding it off until the bike stops.
+    private var rollingFixes = 0
+    private var stoppedSinceMs: Long? = null
+    private var autoRecordHeld = false
+
+    /** Every fix while the Ride screen is up: start a ride log once the bike is rolling. */
+    private fun autoRecord(fix: android.location.Location) {
+        if (!settings.autoRecord) return
+        val speed = if (fix.hasSpeed()) fix.speed else 0f
+        val now = SystemClock.elapsedRealtime()
+        if (speed < STOPPED_MS) {
+            rollingFixes = 0
+            val since = stoppedSinceMs ?: now.also { stoppedSinceMs = it }
+            if (now - since > 30_000) autoRecordHeld = false
+            return
+        }
+        stoppedSinceMs = null
+        rollingFixes = if (speed >= ROLLING_MS) rollingFixes + 1 else 0
+        if (rollingFixes >= 3 && !autoRecordHeld && !RideService.state.value.recording) {
+            Log.i("NaviRec", "recording automatically: rolling at %.1f m/s".format(speed))
+            rollingFixes = 0
+            startRecording()
         }
     }
 
@@ -312,8 +398,14 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         // keep_awake defaults on: the screen stays lit while riding.
         keepAwake(settings.keepAwake)
+        applyOrientation()
+        Navigator.setOffRouteM(settings.offrouteM)
 
         theme = prefs.getString("theme", "night") ?: "night"
+        if (settings.autoTheme) {
+            val phase = Daylight.phase(null, null, System.currentTimeMillis() / 1000.0)
+            theme = Daylight.themeFor(phase)
+        }
         bike = prefs.getString("bike", "yellow") ?: "yellow"
         hudLayout = Layout.of(prefs.getString("hud", Layout.DEFAULT.key))
         dashOn = settings.dash
@@ -363,7 +455,14 @@ class MainActivity : ComponentActivity() {
             }
         }
         // The map follows the same fixes the telemetry uses; there is one GPS listener.
-        LaunchedEffect(Unit) { Telemetry.fix.collect { it?.let(map::showFix) } }
+        LaunchedEffect(Unit) { Telemetry.fix.collect { it?.let { f -> map.showFix(f); autoRecord(f) } } }
+        // The sun, once a minute: the phase changes over minutes, not seconds.
+        LaunchedEffect(Unit) {
+            while (true) {
+                followSun()
+                delay(60_000)
+            }
+        }
         val rec by RideService.state.collectAsState()
         // Built on the ride thread from every sensor (minion 1's Telemetry), recording or not.
         val dash by Telemetry.dash.collectAsState()
@@ -386,14 +485,28 @@ class MainActivity : ComponentActivity() {
         @Suppress("UNUSED_VARIABLE") val rev = settingsRev // a change in Settings redraws the ride screen
         val sensorLines by Telemetry.sensors.collectAsState()
         val micState by Telemetry.mic.collectAsState()
+        val level by Telemetry.level.collectAsState()
         val lastFix by Telemetry.fix.collectAsState()
         val nav by Navigator.nav.collectAsState()
         val voice by Voice.state.collectAsState()
         LaunchedEffect(nav.route) { map.showRoute(nav.route?.points) }
+        // A route holds the GPS the way a recording does, so guidance and the
+        // voice carry on with the screen locked.
+        val guiding = nav.route != null
+        LaunchedEffect(guiding, destName) {
+            if (guiding) GuideService.start(this@MainActivity, destName ?: "your pin")
+            else GuideService.stop(this@MainActivity)
+        }
         LaunchedEffect(nav.dest, pin) { map.showMarks(nav.dest, pin) }
         // Routed: the offered pin has become the destination.
-        LaunchedEffect(nav.dest, nav.route) { if (nav.route != null && nav.dest == pin) pin = null }
-        BackHandler(enabled = settingsOpen) { settingsOpen = false }
+        LaunchedEffect(nav.dest, nav.route) {
+            if (nav.route != null && nav.dest == pin) {
+                destName = pendingName
+                pin = null
+            }
+        }
+        BackHandler(enabled = settingsOpen && !helpOpen) { settingsOpen = false }
+        BackHandler(enabled = helpOpen) { helpOpen = false }
         BackHandler(enabled = !settingsOpen && pin != null && !whereToOpen) { cancelPin() }
         BackHandler(enabled = whereToOpen && !settingsOpen) { whereToOpen = false }
         val places by PlacesStore.state.collectAsState()
@@ -448,7 +561,8 @@ class MainActivity : ComponentActivity() {
                                 PinBand(at, nav, here, p, settings.imperial,
                                     onRoute = { routeToPin(at) },
                                     onCancel = ::cancelPin,
-                                    name = pinName, about = pinAbout)
+                                    name = pinName, about = pinAbout,
+                                    outside = map.covers(at) == false)
                             }
                         }
                     }
@@ -464,22 +578,31 @@ class MainActivity : ComponentActivity() {
                     // including why there is no rpm, rather than a blank that looks broken.
                     if (micState.on || micState.error.isNotEmpty()) Chip(micAccount(micState), p)
                     if (endArmedAt != null) Chip("Tap End again to end the route", p, edge = p.bad, ink = p.bad)
-                    message(problem, locationGranted, fixAge, dataPack)?.let { Chip(it, p) }
+                    message(problem, locationGranted, fixAge, dataPack,
+                        outside = lastFix?.let { map.covers(LatLon(it.latitude, it.longitude)) == false } == true)?.let { Chip(it, p) }
                 },
             ) {
                 RoundButton("☰", p) { settingsOpen = true }
                 RoundButton(if (rec.recording) "■" else "●", p, if (rec.recording) p.bad else p.accent) {
                     onRecordTap()
                 }
-                RoundButton(p, { whereToOpen = true; Voice.tap("opened Where to") }) { SearchGlyph(p.accent) }
-                // Ending a route takes two taps, as stopping a recording does. Above
-                // follow, so follow is the one that comes and goes at the bottom.
+                // Opens empty: it kept the last search, with the cursor at its
+                // start, so "ikea" typed after a ride became "ikeachabot space".
+                RoundButton(p, { PlacesStore.search("", null); whereToOpen = true; Voice.tap("opened Where to") }) { SearchGlyph(p.accent) }
+                // Follow: always here, lit while the map follows her, dark when
+                // she has panned away; one tap centres on the bike and follows.
+                // It used to appear only after a pan, so she never saw it
+                // ("the center on bike and follow bike ... i don't see that").
+                if (locationGranted) {
+                    RoundButton(p, { map.follow() }, lit = following) { FollowGlyph(if (following) p.bg else p.accent) }
+                }
+                // Ending a route takes two taps, as stopping a recording does. Last
+                // in the column: it comes and goes, and nothing below it moves.
                 if (nav.route != null) {
                     RoundButton(if (endArmedAt != null) "End?" else "End", p, if (endArmedAt != null) p.bad else p.ink(Role.TEXT2)) {
                         onEndTap()
                     }
                 }
-                if (locationGranted && !following) RoundButton(p, { map.follow() }) { FollowGlyph(p.accent) }
             }
 
             if (whereToOpen) {
@@ -492,6 +615,7 @@ class MainActivity : ComponentActivity() {
                         Voice.tap("picked ${hit.name}")
                     },
                     onClose = { whereToOpen = false },
+                    routable = { map.covers(it) != false },
                 )
             }
 
@@ -502,8 +626,21 @@ class MainActivity : ComponentActivity() {
                     version = runCatching { packageManager.getPackageInfo(packageName, 0).versionName }.getOrNull() ?: "",
                     onChanged = ::applySetting,
                     onClose = { settingsOpen = false },
+                    level = level, levelNote = levelNote,
+                    onHelp = { helpOpen = true },
+                    onLevel = { set ->
+                        if (set) {
+                            Telemetry.setLevel(this@MainActivity) { ok ->
+                                levelNote = if (ok) "" else "No accelerometer has reported yet - is Motion sensors on?"
+                            }
+                        } else {
+                            Telemetry.clearLevel(this@MainActivity)
+                            levelNote = ""
+                        }
+                    },
                 )
             }
+            if (helpOpen) HelpPanel(p) { helpOpen = false }
         }
     }
 
@@ -531,7 +668,7 @@ class MainActivity : ComponentActivity() {
     }
 
     /** One honest line about why the map or the bike is not where she expects. */
-    private fun message(problem: Problem?, granted: Boolean, fixAge: Double?, data: DataPack.State): String? = when {
+    private fun message(problem: Problem?, granted: Boolean, fixAge: Double?, data: DataPack.State, outside: Boolean): String? = when {
         data.busy -> "Unpacking the map for the first time: %,d of %,d MB".format(data.doneBytes / 1_000_000, data.totalBytes / 1_000_000)
         data.error.isNotEmpty() -> data.error
         problem == Problem.NO_TILES ->
@@ -545,6 +682,8 @@ class MainActivity : ComponentActivity() {
         !granted -> "Location is off for Navi — no bike on the map"
         !Telemetry.hasGps(this) -> "This phone reports no GPS receiver"
         fixAge == null -> "Waiting for GPS"
+        // The Flet app's own sentence (routing.START_OUTSIDE), so both apps say it alike.
+        outside -> "You are outside the offline map. Ride back into it, or find signal."
         fixAge > STALE_FIX_S -> "GPS lost ${fixAge.toInt()} s ago"
         else -> null
     }
@@ -569,5 +708,8 @@ class MainActivity : ComponentActivity() {
         )
         const val STALE_FIX_S = 10.0
         const val STOP_CONFIRM_MS = 3000L
+        /** The Flet app's "the bike is rolling": faster than a parked GPS wanders (m/s, ~5.6 mph). */
+        const val ROLLING_MS = 2.5f
+        const val STOPPED_MS = 1.0f
     }
 }

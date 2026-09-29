@@ -129,10 +129,11 @@ fun BoxScope.ButtonColumnLayout(
  * findable only by touch.
  */
 @Composable
-fun RoundButton(p: Palette, onClick: () -> Unit, content: @Composable () -> Unit) {
+fun RoundButton(p: Palette, onClick: () -> Unit, lit: Boolean = false, content: @Composable () -> Unit) {
     Box(
         Modifier.size(TypeScale.TOUCH_DP.dp)
-            .background(p.surface, CircleShape)
+            // Lit: a state that is ON (the map following her), filled in the ring's colour.
+            .background(if (lit) p[DashColours.CONTROL_RING] else p.surface, CircleShape)
             .border(2.dp, p[DashColours.CONTROL_RING], CircleShape)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
