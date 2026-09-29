@@ -109,10 +109,12 @@ object Navigator {
             val nav = _nav.value
             // A destination chosen before the first fix is routed on it.
             if (first && nav.asking != null) ask(p, nav.asking, generation, first = true)
-            if (follower.route == null) return
-            val now = System.currentTimeMillis() / 1000.0
+            // Her speed is kept even with no route yet, so the FIRST route of a
+            // ride, picked while moving, starts on the speed bands too.
             val speed = if (fix.hasSpeed()) fix.speed.toDouble() else null
             speedMs = speed
+            if (follower.route == null) return
+            val now = System.currentTimeMillis() / 1000.0
             val status = follower.update(p, speed, now)
             val dest = nav.dest
             var rerouting = false
