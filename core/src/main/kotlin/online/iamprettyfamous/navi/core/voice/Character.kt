@@ -20,14 +20,23 @@ import kotlin.random.Random
  *   imported: she heard it and named the direction herself - "GO LEFT IF YOU
  *   WANT TO LIVE", the line that started all this. Never one from the
  *   built-in pool: that would be us guessing left from right.
- * - FLOURISHES, `flourish-<mood>-<slug>`: at most one per prompt, always LAST,
- *   after the instruction, its tail, the street and any situation line.
+ * - FLOURISHES, `flourish-<mood>-<slug>`: up to TWO per prompt, always after
+ *   the whole instruction, its tail, the street and any situation line.
  *   URGENT lines ("DO IT NOW") only on "near" and "now", never "far": half a
  *   mile out they could put her into a junction early. On "now", only urgent
- *   or the arrival's own line. ANGRY at most once a minute: a wrong turn is
- *   no time to be shouted at five times.
- * - THE COUGH, `interject-cough*`: rarely, in the one join between a distance
- *   and its turn, never on "now", never in two prompts running.
+ *   or the arrival's own line, and only one. ANGRY at most once a minute: a
+ *   wrong turn is no time to be shouted at five times.
+ * - THE COUGH, `interject-cough*`: rarely, in a join INSIDE the instruction -
+ *   between distance and maneuver, or in the middle of the maneuver when it
+ *   comes in two halves (`part-<slot>-a` / `-b`) - never on "now", never in
+ *   two prompts running.
+ *
+ * ARRANGEMENT (hers: "everything needs to be significantly CREATIVE"), agreed
+ * with minion 3 so both apps sound alike: on far and near the maneuver may
+ * come before the distance ("turn left, in 200 feet"); no far/near prompt has
+ * the same shape (order, where the cough is, how many flourishes) as the one
+ * before it. The distance, the direction and its tail always come through
+ * whole, and "now" is only the maneuver, its tail and one flourish at most.
  *
  * A flourish and a cough are SOFT: any newer prompt cuts them at once (Voice),
  * so neither can be what is still playing when an instruction needs to speak.
@@ -49,6 +58,7 @@ class Character(private val random: Random = Random.Default) {
     private var coughedLast = false
     private val given = ArrayDeque<Any>()
     private var angryAt: Double? = null
+    private var lastShape: Triple<Boolean, Int, Int>? = null
 
     /** Every slot she has a sound for: her names, plus the slots that only have wild lines. */
     fun slots(have: Set<String>, hers: Set<String> = emptySet()): Set<String> =
@@ -123,24 +133,119 @@ class Character(private val random: Random = Random.Default) {
     /** A tap outside the ride screen (opening search, picking a place), with her tap switch on. */
     fun tap(have: Set<String>): Item.Clip? = if (on && taps) line("ui", have) else null
 
+    /** A prompt arranged: the instruction's pieces in order, then the flourishes. */
+    data class Arranged(val turn: List<Item>, val after: List<Item.Clip>)
+
     /**
-     * [turn] with a cough in its one join - between the distance and the
-     * maneuver - rarely. Only a far or near prompt that has a distance and more
-     * than one piece has that join; the one after a cough never coughs.
+     * Arrange one prompt. [core] is its instruction in pieces (null: [whole],
+     * our own sentence, played as it is). The rolls, in this order: the order
+     * (maneuver first, [P_MANEUVER_FIRST], far/near with a distance), the
+     * cough ([COUGH_RATE], inside the maneuver's halves if usable, else the
+     * distance join), the first flourish, the second ([P_SECOND]). Then a
+     * far/near prompt shaped like the one before it has its order flipped.
      */
-    fun cough(turn: List<Item>, band: String?, metres: Double?, have: Set<String>): List<Item> {
-        if (!on || band == null || band == "now" || metres == null || metres <= 0.0 || turn.size < 2) return turn
+    fun arrange(
+        core: VoiceLines.Core?,
+        whole: List<Item>,
+        band: String?,
+        kind: String?,
+        maneuver: Any?,
+        cues: List<String>,
+        have: Set<String>,
+        hers: Set<String>,
+        now: Double = 0.0,
+    ): Arranged {
+        val wide = band == "far" || band == "near"
+        val shaped = on && wide && core != null
+        var first = shaped && core!!.distance != null && random.nextDouble() < P_MANEUVER_FIRST
+        val halves = if (shaped) halves(core!!, have, hers) else null
+        val where = if (!shaped) NONE else when {
+            halves != null -> INSIDE
+            core!!.distance != null -> JOIN
+            else -> NONE
+        }
+        val cough = if (where != NONE) cough(have) else null
+        val coughAt = if (cough != null) where else NONE
+        val f1 = flourish(band, kind, maneuver, cues, have, now)
+        val f2 = if (f1 != null && wide) second(f1, band, kind, maneuver, cues, have, now) else null
+        val after = listOfNotNull(f1, f2)
+        if (wide) {
+            var shape = Triple(first, coughAt, after.size)
+            if (shape == lastShape && core?.distance != null && shaped) {
+                first = !first
+                shape = Triple(first, coughAt, after.size)
+            }
+            lastShape = shape
+        }
+        if (core == null) return Arranged(whole, after)
+        if (!shaped) return Arranged(core.classic(), after)
+        val verb = (core.maneuver as? Item.Clip)?.fallback
+        val m = if (coughAt == INSIDE && halves != null) {
+            // Either half that will not play is replaced by the WHOLE words:
+            // a lost "left" would lose the direction.
+            listOf(Item.Clip(halves.first, verb), cough!!, Item.Clip(halves.second, verb))
+        } else {
+            listOf(core.maneuver)
+        }
+        val group = m + core.glued
+        val d = listOfNotNull(core.distance)
+        val join = if (coughAt == JOIN) listOf(cough!!) else emptyList()
+        return Arranged(if (first) group + join + d else d + join + group, after)
+    }
+
+    /**
+     * The maneuver's two halves, when it is the slot's own clip (not a wild
+     * line) and both halves exist from the SAME source as it: hers with hers,
+     * built-in with built-in - never her half and Arnold's.
+     */
+    private fun halves(core: VoiceLines.Core, have: Set<String>, hers: Set<String>): Pair<String, String>? {
+        val slot = core.slot ?: return null
+        if ((core.maneuver as? Item.Clip)?.name != slot) return null
+        val a = "part-$slot-a"
+        val b = "part-$slot-b"
+        if (a !in have || b !in have) return null
+        val mine = slot in hers
+        return if ((a in hers) == mine && (b in hers) == mine) a to b else null
+    }
+
+    /** The cough, rarely, never in two prompts running that could have had one. */
+    private fun cough(have: Set<String>): Item.Clip? {
         val pool = have.filter(::isCough).sorted()
-        if (pool.isEmpty()) return turn
+        if (pool.isEmpty()) return null
         if (coughedLast) {
             coughedLast = false
-            return turn
+            return null
         }
-        if (random.nextDouble() >= COUGH_RATE) return turn
+        if (random.nextDouble() >= COUGH_RATE) return null
         val pick = fresh(pool, lastCough)
         lastCough = pick
         coughedLast = true
-        return listOf(turn[0], Item.Clip(pick, null, soft = true)) + turn.drop(1)
+        return Item.Clip(pick, null, soft = true)
+    }
+
+    /**
+     * A second flourish after [first], [P_SECOND] of the time: a mood picked
+     * evenly among those this moment allows (angry after off route or on a
+     * near turn - under the minute - scold when speeding, start at a start,
+     * urgent on near) that still has a line other than [first], then a line.
+     */
+    private fun second(first: Item.Clip, band: String?, kind: String?, maneuver: Any?, cues: List<String>, have: Set<String>, now: Double): Item.Clip? {
+        if (kind == ManeuverKind.ARRIVE || random.nextDouble() >= P_SECOND) return null
+        val angryOk = angryAt.let { it == null || now - it >= ANGRY_EVERY_S }
+        val moods = LinkedHashSet<String>()
+        if (angryOk && ("offroute" in cues || "rerouting" in cues)) moods += "angry"
+        if ("speeding" in cues) moods += "scold"
+        if ("start" in cues) moods += "start"
+        if (maneuver != null && band == "near") {
+            moods += "urgent"
+            if (angryOk) moods += "angry"
+        }
+        val open = moods.filter { m -> have.any { mood(it) == m && it != first.name } }
+        if (open.isEmpty()) return null
+        val mood = open[random.nextInt(open.size)]
+        val pick = fresh(have.filter { mood(it) == mood && it != first.name }.sorted(), lastFlourish)
+        lastFlourish = pick
+        return Item.Clip(pick, null, soft = true)
     }
 
     private fun line(mood: String, have: Set<String>): Item.Clip? {
@@ -173,7 +278,7 @@ class Character(private val random: Random = Random.Default) {
         /** The slots that say which way: a wild line for one must be hers. */
         val DIRECTIONS = setOf(
             ManeuverKind.TURN_LEFT, ManeuverKind.TURN_RIGHT, ManeuverKind.SLIGHT_LEFT, ManeuverKind.SLIGHT_RIGHT,
-            ManeuverKind.SHARP_LEFT, ManeuverKind.SHARP_RIGHT, ManeuverKind.UTURN,
+            ManeuverKind.SHARP_LEFT, ManeuverKind.SHARP_RIGHT, ManeuverKind.UTURN, "exit-left", "exit-right",
         )
 
         /** Seconds between two angry lines, as for speeding: one per minute at most. */
@@ -182,6 +287,17 @@ class Character(private val random: Random = Random.Default) {
         /** Rare: a cough is funny once. */
         const val COUGH_RATE = 0.08
 
+        /** How often a far or near prompt puts the maneuver before the distance. */
+        const val P_MANEUVER_FIRST = 0.3
+
+        /** How often a first flourish gets a second. */
+        const val P_SECOND = 0.35
+
+        /** Where the cough went: nowhere, between distance and maneuver, inside the maneuver. */
+        const val NONE = 0
+        const val JOIN = 1
+        const val INSIDE = 2
+
         /** Maneuvers remembered as having had their flourish. */
         private const val REMEMBER = 32
 
@@ -189,6 +305,7 @@ class Character(private val random: Random = Random.Default) {
         private val FLOURISH = Regex("""flourish-(${MOODS.joinToString("|")})-[a-z0-9-]+""")
         private val COUGH = Regex("""interject-cough(?:-[a-z0-9-]+)?""")
         private val NUMBER = Regex("""(?:number|hours|seconds)-(?:0|[1-9][0-9]*)""")
+        private val PART = Regex("""part-(.+)-([ab])""")
 
         fun mood(name: String): String? = FLOURISH.matchEntire(name)?.groupValues?.get(1)
 
@@ -212,7 +329,11 @@ class Character(private val random: Random = Random.Default) {
             return best
         }
 
+        /** The slot a half belongs to: part-continue-a -> continue; null for anything else. */
+        fun partSlot(name: String): String? = PART.matchEntire(name)?.groupValues?.get(1)?.takeIf { VoiceLines.isSlot(it) }
+
         /** Any name of hers that is part of the character rather than a slot. */
-        fun isName(name: String): Boolean = mood(name) != null || isCough(name) || isNumber(name) || wildSlot(name) != null
+        fun isName(name: String): Boolean =
+            mood(name) != null || isCough(name) || isNumber(name) || wildSlot(name) != null || partSlot(name) != null
     }
 }
