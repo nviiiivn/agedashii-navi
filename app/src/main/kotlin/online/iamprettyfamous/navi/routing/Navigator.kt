@@ -59,9 +59,13 @@ object Navigator {
     private var reroutes = 0
     // Her situation lines (start, off route, re-routing), each on its edge. The
     // token is new with every destination she picks, even the same place again,
-    // so a new start is a start and a re-route is not.
+    // so a new start is a start and a re-route is not. It moves to [destination]
+    // only when that destination's route is UP: set on the pick, the old route's
+    // next fix said "start" - and a place that could not be routed at all got
+    // "start" too (Napa, emulator-5556, ship candidate 99b8285).
     private val cues = VoiceLines.Cues()
     private var destination: Any? = null
+    private var asked: Any? = null
 
     /** Route from where she is to [dest]. With no fix yet, the route starts at the first one. */
     fun go(dest: LatLon, imperial: Boolean) {
@@ -69,7 +73,7 @@ object Navigator {
             this.imperial = imperial
             follower.imperial = imperial
             generation++
-            destination = Any()
+            asked = Any()
             _nav.value = _nav.value.copy(asking = dest, failed = "", failedFor = null)
             here?.let { ask(it, dest, generation, first = true) }
         }
@@ -145,6 +149,7 @@ object Navigator {
                 return
             }
             follower.setRoute(line)
+            if (first) destination = asked
             if (first) reroutes = 0 else {
                 reroutes++
                 follower.noteReroute()
