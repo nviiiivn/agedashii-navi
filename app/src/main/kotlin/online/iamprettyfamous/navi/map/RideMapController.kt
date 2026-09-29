@@ -302,6 +302,15 @@ class RideMapController(context: Context) {
         onProblem(p)
     }
 
+    /**
+     * Whether [p] is inside the offline map, or null before the map is read.
+     * The router's tiles cover the same box, so outside it there is no map
+     * AND no route.
+     */
+    fun covers(p: LatLon): Boolean? = header?.let { h ->
+        p.lat in h.south..h.north && p.lon in h.west..h.east
+    }
+
     /** A new map file is in place (DataPack): read its header again and redraw. */
     fun reloadTiles() {
         header = null
@@ -400,6 +409,13 @@ class RideMapController(context: Context) {
         // asking for the mode it is already in changes nothing, zoom included
         // (emulator: stayed at z11), so then zoom on its own.
         val mode = if (northUp) CameraMode.TRACKING_GPS_NORTH else CameraMode.TRACKING_GPS
+        // No fix yet: follow, but keep the overview. Riding zoom at the map's
+        // centre was a blank patch of the Bay that looked broken (first start,
+        // indoors); the first fix zooms in (showFix).
+        if (!hadFix) {
+            if (lc.cameraMode != mode) lc.cameraMode = mode
+            return
+        }
         if (lc.cameraMode == mode) lc.zoomWhileTracking(RIDING_ZOOM)
         else lc.setCameraMode(mode, 750L, RIDING_ZOOM, null, null, null)
     }

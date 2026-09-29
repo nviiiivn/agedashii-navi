@@ -73,6 +73,8 @@ fun PinBand(
     /** The place's name and "kind · town" when it came from Where to; null for a long press. */
     name: String? = null,
     about: String? = null,
+    /** The point is outside the map this phone can route on. */
+    outside: Boolean = false,
 ) {
     val finding = nav.asking == pin
     val failed = nav.failedFor == pin
@@ -83,7 +85,8 @@ fun PinBand(
         else -> "Route to ${name ?: "this point"}?"
     }
     val away = here?.let { "${Guidance.distanceText(Physics.haversineM(it, pin), imperial)} away" }
-    val detail = if (failed) nav.failed
+    val detail = if (failed && outside) "outside the map on this phone - its maps and routes cover the Bay Area only"
+    else if (failed) nav.failed
     else listOfNotNull(about?.ifEmpty { null } ?: "%.5f, %.5f".format(pin.lat, pin.lon), away).joinToString(" · ")
     Card(p) {
         Line(title, p.text, TypeScale.MID_SP, FontWeight.ExtraBold, maxLines = 2)
