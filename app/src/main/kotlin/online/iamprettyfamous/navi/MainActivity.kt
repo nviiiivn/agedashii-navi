@@ -59,6 +59,7 @@ import online.iamprettyfamous.navi.ui.RoundButton
 import online.iamprettyfamous.navi.ui.Palette
 import online.iamprettyfamous.navi.ui.palette
 import online.iamprettyfamous.navi.routing.Navigator
+import online.iamprettyfamous.navi.routing.GuideService
 import online.iamprettyfamous.navi.voice.Voice
 import online.iamprettyfamous.navi.places.PlacesStore
 import online.iamprettyfamous.navi.data.DataPack
@@ -380,6 +381,13 @@ class MainActivity : ComponentActivity() {
         val nav by Navigator.nav.collectAsState()
         val voice by Voice.state.collectAsState()
         LaunchedEffect(nav.route) { map.showRoute(nav.route?.points) }
+        // A route holds the GPS the way a recording does, so guidance and the
+        // voice carry on with the screen locked.
+        val guiding = nav.route != null
+        LaunchedEffect(guiding, destName) {
+            if (guiding) GuideService.start(this@MainActivity, destName ?: "your pin")
+            else GuideService.stop(this@MainActivity)
+        }
         LaunchedEffect(nav.dest, pin) { map.showMarks(nav.dest, pin) }
         // Routed: the offered pin has become the destination.
         LaunchedEffect(nav.dest, nav.route) { if (nav.route != null && nav.dest == pin) pin = null }
@@ -466,14 +474,20 @@ class MainActivity : ComponentActivity() {
                 // Opens empty: it kept the last search, with the cursor at its
                 // start, so "ikea" typed after a ride became "ikeachabot space".
                 RoundButton(p, { PlacesStore.search("", null); whereToOpen = true }) { SearchGlyph(p.accent) }
-                // Ending a route takes two taps, as stopping a recording does. Above
-                // follow, so follow is the one that comes and goes at the bottom.
+                // Follow: always here, lit while the map follows her, dark when
+                // she has panned away; one tap centres on the bike and follows.
+                // It used to appear only after a pan, so she never saw it
+                // ("the center on bike and follow bike ... i don't see that").
+                if (locationGranted) {
+                    RoundButton(p, { map.follow() }, lit = following) { FollowGlyph(if (following) p.bg else p.accent) }
+                }
+                // Ending a route takes two taps, as stopping a recording does. Last
+                // in the column: it comes and goes, and nothing below it moves.
                 if (nav.route != null) {
                     RoundButton(if (endArmedAt != null) "End?" else "End", p, if (endArmedAt != null) p.bad else p.ink(Role.TEXT2)) {
                         onEndTap()
                     }
                 }
-                if (locationGranted && !following) RoundButton(p, { map.follow() }) { FollowGlyph(p.accent) }
             }
 
             if (whereToOpen) {

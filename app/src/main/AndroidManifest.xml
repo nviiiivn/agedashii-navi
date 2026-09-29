@@ -44,6 +44,11 @@
             </intent-filter>
         </activity>
 
+        <!-- Holds the GPS while a route is followed, screen off included. -->
+        <service
+            android:name=".routing.GuideService"
+            android:exported="false"
+            android:foregroundServiceType="location" />
         <service
             android:name=".record.RideService"
             android:exported="false"
