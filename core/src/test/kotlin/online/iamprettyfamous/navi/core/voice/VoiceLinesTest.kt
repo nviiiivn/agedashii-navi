@@ -3,6 +3,7 @@ package online.iamprettyfamous.navi.core.voice
 import online.iamprettyfamous.navi.core.voice.VoiceLines.Item
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -134,6 +135,53 @@ class VoiceLinesTest {
         assertEquals(Item.Speak("onto Grand Ave"), on.last())
         val arrive = VoiceLines.playlist("x", "arrive", "now", null, "You have arrived", "Grand Ave", true, have, streets = true)
         assertTrue(arrive.none { it is Item.Speak && "onto" in it.text })
+    }
+
+    @Test
+    fun `after her exit clip the side, after her roundabout clip the exit number`() {
+        // Her one "exit" clip serves both sides and her one "roundabout" clip every exit.
+        val right = VoiceLines.playlist(
+            "x", "exit", "near", ft(400.0), "Take exit 2 on the right toward Oakland.", "", true, have,
+        )
+        assertEquals(listOf(Item.Clip("dist-400ft", "In 400 feet,"), Item.Clip("exit", "Take exit 2 on the right toward Oakland"), Item.Speak("on the right")), right)
+        val left = VoiceLines.playlist("x", "exit", "now", null, "Take the exit on the left.", "", true, have)
+        assertEquals(listOf(Item.Clip("exit", "Take the exit on the left"), Item.Speak("on the left")), left)
+        val round = VoiceLines.playlist(
+            "x", "roundabout", "now", null, "Enter the roundabout and take the 2nd exit onto Main Street.", "Main Street", true, have + "roundabout",
+        )
+        assertEquals(listOf(Item.Clip("roundabout", "Enter the roundabout and take the 2nd exit"), Item.Speak("take the 2nd exit")), round)
+    }
+
+    @Test
+    fun `the phone's own sentence already says it, so nothing follows`() {
+        val say = "Take the exit on the left."
+        assertEquals(listOf(Item.Speak(say)), VoiceLines.playlist(say, "exit", "now", null, say, "", true, have - "exit"))
+        val distOnly = VoiceLines.playlist("x", "exit", "near", ft(400.0), say, "", true, have - "exit")
+        assertEquals(listOf(Item.Clip("dist-400ft", "In 400 feet,"), Item.Speak("Take the exit on the left")), distOnly)
+        assertNull(VoiceLines.afterHerLine("exit", "Take the exit."), "no side in the words: nothing invented")
+        assertNull(VoiceLines.afterHerLine("turn-left", "Turn left on the right side"))
+    }
+
+    @Test
+    fun `a refused re-route in words she can act on, and never 'find signal'`() {
+        val outside = VoiceLines.refusal("no route: No suitable edges near location")
+        assertEquals(listOf(Item.Speak("No route. You are outside the offline map. Ride back into it.")), outside)
+        assertEquals(outside, VoiceLines.refusal("no route: {\"error_code\":171}"))
+        assertEquals(listOf(Item.Speak("No new route yet. It will keep trying.")), VoiceLines.refusal("no route: No path could be found for input"))
+    }
+
+    @Test
+    fun `a refusal is said once per off-route spell`() {
+        val cues = VoiceLines.Cues()
+        val dest = Any()
+        cues.update(true, true, dest, true, false, 0.0)
+        assertTrue(cues.refused())
+        assertFalse(cues.refused(), "the retries need no voice")
+        cues.update(true, true, dest, true, false, 12.0)
+        assertFalse(cues.refused(), "still the same spell")
+        cues.update(true, false, dest, false, false, 20.0)
+        cues.update(true, true, dest, true, false, 30.0)
+        assertTrue(cues.refused(), "a new spell may say it again")
     }
 
     @Test

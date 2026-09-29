@@ -164,8 +164,43 @@ object VoiceLines {
         }
         val verb = bare(instruction)
         items += if (manClip != null) Item.Clip(manClip, verb) else Item.Speak(verb)
+        // Her line replaces the verb, so what only the words carry follows it in
+        // the phone's voice: which exit off a roundabout, which side an exit is on.
+        if (manClip != null) afterHerLine(man, instruction)?.let { items += Item.Speak(it) }
         if (streets && !street.isNullOrBlank() && man != ManeuverKind.ARRIVE) items += Item.Speak("onto $street")
         return items
+    }
+
+    private val EXIT_NUMBER = Regex("""\btake the (\w+) exit\b""")
+    private val SIDE = Regex("""\bon the (left|right)\b""")
+
+    /**
+     * What must still be said after her clip for [man], or null. One "exit"
+     * clip serves both sides ("Exit. I insist.") and one "roundabout" clip
+     * every exit, so the side and the exit number would otherwise be lost
+     * (voicelines.py's _after_her_line, Flet v1.17.0).
+     */
+    fun afterHerLine(man: String?, instruction: String?): String? {
+        val text = instruction.orEmpty().lowercase()
+        return when (man) {
+            ManeuverKind.ROUNDABOUT -> EXIT_NUMBER.find(text)?.let { "take the ${it.groupValues[1]} exit" }
+            ManeuverKind.EXIT -> SIDE.find(text)?.let { "on the ${it.groupValues[1]}" }
+            else -> null
+        }
+    }
+
+    /**
+     * A re-route the router refused, made for the ear. Once per off-route spell
+     * ([Cues.refused]): after "off route" and "re-routing" a refusal was
+     * silence while the banner said re-routing. Valhalla's "No suitable edges
+     * near location" (error 171) on a RE-route means where she is, since the
+     * destination routed before. No "find signal": this app routes offline only.
+     */
+    fun refusal(reason: String): List<Item> {
+        val outside = reason.contains("171") || reason.contains("no suitable edges", ignoreCase = true)
+        val words = if (outside) "No route. You are outside the offline map. Ride back into it."
+        else "No new route yet. It will keep trying."
+        return listOf(Item.Speak(words))
     }
 
     /** A situation: her clip, else the phone's words, else nothing (speeding). */
@@ -224,6 +259,7 @@ object VoiceLines {
         private var rerouted = false
         private var fast = false
         private var fastAt: Double? = null
+        private var refusalSaid = false
 
         fun update(ok: Boolean, offRoute: Boolean, destination: Any?, reroute: Boolean, over: Boolean, now: Double): List<String> {
             val names = ArrayList<String>()
@@ -232,7 +268,10 @@ object VoiceLines {
                 names += "start"
             }
             if (offRoute && !off) names += "offroute"
-            if (!offRoute) rerouted = false else if (reroute && !rerouted) {
+            if (!offRoute) {
+                rerouted = false
+                refusalSaid = false
+            } else if (reroute && !rerouted) {
                 rerouted = true
                 names += "rerouting"
             }
@@ -244,6 +283,13 @@ object VoiceLines {
             }
             fast = over
             return names
+        }
+
+        /** True the first time a re-route is refused in this off-route spell; the retries need no voice. */
+        fun refused(): Boolean {
+            if (refusalSaid) return false
+            refusalSaid = true
+            return true
         }
     }
 }

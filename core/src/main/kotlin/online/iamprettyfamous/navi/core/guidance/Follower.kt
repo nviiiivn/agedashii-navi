@@ -106,10 +106,15 @@ class Follower(
         trackOffRoute(progress.offRouteM, now)
 
         // Arrival is distance to the end of the line, not to the last maneuver.
+        val wasArrived = arrived
         if (left.metres != null && left.metres < Guidance.ARRIVE_M) arrived = true
 
         val man = next.maneuver
-        val due = if (!offRoute && man != null && !arrived) maybeSay(man, next.metres, speedMs) else null
+        // wasArrived, not arrived: the fix that ARRIVES may still say so. Below a
+        // crawl the "now" band is 25 m - the arrival distance - and checking the
+        // new state swallowed the only prompt saying she is there (guidance.py,
+        // Flet v1.17.0).
+        val due = if (!offRoute && man != null && !wasArrived) maybeSay(man, next.metres, speedMs) else null
         val instruction = man?.instruction ?: ""
         return Status(
             ok = true,

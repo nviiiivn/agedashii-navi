@@ -154,6 +154,18 @@ class PromptsTest {
     }
 
     @Test
+    fun `arriving at walking pace still says so`() {
+        // Below a crawl the "now" band is 25 m, the same as the arrival distance:
+        // the fix that arrives is the only one that can say it (Flet v1.17.0).
+        points.dropLast(1).forEachIndexed { i, p -> follower.update(p, speedMs = 1.0, now = i.toDouble()) }
+        val end = points.last()
+        val there = follower.update(LatLon(end.lat - 0.00015, end.lon), speedMs = 1.0, now = 100.0) // ~17 m short
+        assertTrue(there.arrived)
+        assertEquals("arrive at your destination", there.say)
+        assertNull(follower.update(end, speedMs = 1.0, now = 101.0).say, "and only once")
+    }
+
+    @Test
     fun `the head instruction is never a prompt`() {
         // next_maneuver starts at maneuvers[1]; "head north" is what she is already doing.
         val status = follower.update(points[0], speedMs = 15.0, now = 0.0)
