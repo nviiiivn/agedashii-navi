@@ -184,6 +184,9 @@ class MainActivity : ComponentActivity() {
 
     private var whereToOpen by mutableStateOf(false)
 
+    /** What setting the level last had to say, when it could not. */
+    private var levelNote by mutableStateOf("")
+
     private fun offer(at: LatLon, name: String?, about: String?) {
         pin = at
         pinName = name
@@ -191,9 +194,14 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun routeToPin(at: LatLon) {
-        destName = pinName
+        // The name becomes the destination's only once its route exists: set
+        // here, a refused Napa renamed the Chabot route still being followed
+        // ("Route ends at Skyline Boulevard, 300 ft from Napa").
+        pendingName = pinName
         Navigator.go(at, settings.imperial)
     }
+
+    private var pendingName: String? = null
 
     /** The same two-tap guard for ending a route. */
     private var endArmedAt by mutableStateOf<Long?>(null)
@@ -377,6 +385,7 @@ class MainActivity : ComponentActivity() {
         @Suppress("UNUSED_VARIABLE") val rev = settingsRev // a change in Settings redraws the ride screen
         val sensorLines by Telemetry.sensors.collectAsState()
         val micState by Telemetry.mic.collectAsState()
+        val level by Telemetry.level.collectAsState()
         val lastFix by Telemetry.fix.collectAsState()
         val nav by Navigator.nav.collectAsState()
         val voice by Voice.state.collectAsState()
@@ -390,7 +399,12 @@ class MainActivity : ComponentActivity() {
         }
         LaunchedEffect(nav.dest, pin) { map.showMarks(nav.dest, pin) }
         // Routed: the offered pin has become the destination.
-        LaunchedEffect(nav.dest, nav.route) { if (nav.route != null && nav.dest == pin) pin = null }
+        LaunchedEffect(nav.dest, nav.route) {
+            if (nav.route != null && nav.dest == pin) {
+                destName = pendingName
+                pin = null
+            }
+        }
         BackHandler(enabled = settingsOpen) { settingsOpen = false }
         BackHandler(enabled = !settingsOpen && pin != null && !whereToOpen) { cancelPin() }
         BackHandler(enabled = whereToOpen && !settingsOpen) { whereToOpen = false }
@@ -510,6 +524,17 @@ class MainActivity : ComponentActivity() {
                     version = runCatching { packageManager.getPackageInfo(packageName, 0).versionName }.getOrNull() ?: "",
                     onChanged = ::applySetting,
                     onClose = { settingsOpen = false },
+                    level = level, levelNote = levelNote,
+                    onLevel = { set ->
+                        if (set) {
+                            Telemetry.setLevel(this@MainActivity) { ok ->
+                                levelNote = if (ok) "" else "No accelerometer has reported yet - is Motion sensors on?"
+                            }
+                        } else {
+                            Telemetry.clearLevel(this@MainActivity)
+                            levelNote = ""
+                        }
+                    },
                 )
             }
         }

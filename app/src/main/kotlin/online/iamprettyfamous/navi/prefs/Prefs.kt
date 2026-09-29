@@ -57,6 +57,11 @@ class Prefs(context: Context) {
         get() = raw.getBoolean("keep_awake", true)
         set(v) = raw.edit().putBoolean("keep_awake", v).apply()
 
+    /** Her master switch for the motion sensors. Off holds while recording too. */
+    var sensors: Boolean
+        get() = raw.getBoolean("sensors", true)
+        set(v) = raw.edit().putBoolean("sensors", v).apply()
+
     var sensorsOnDemand: Boolean
         get() = raw.getBoolean("sensors_on_demand", true)
         set(v) = raw.edit().putBoolean("sensors_on_demand", v).apply()
