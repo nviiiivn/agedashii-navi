@@ -99,16 +99,16 @@ class CharacterTest {
 
     @Test
     fun `the chain - hers, then a wild one never twice running, then the built-in`() {
-        val have = setOf("turn-left", "wild-turn-left-a", "wild-turn-left-b")
+        val have = setOf("offroute", "wild-offroute-a", "wild-offroute-b")
         val c = Character(Dice(picks = listOf(0, 0, 0)))
-        assertEquals("turn-left", c.voiceFor("turn-left", hers = setOf("turn-left"), have = have), "her own wins")
-        val first = c.voiceFor("turn-left", emptySet(), have)
-        val second = c.voiceFor("turn-left", emptySet(), have)
+        assertEquals("offroute", c.voiceFor("offroute", hers = setOf("offroute"), have = have), "her own wins")
+        val first = c.voiceFor("offroute", emptySet(), have)
+        val second = c.voiceFor("offroute", emptySet(), have)
         assertTrue(first.startsWith("wild-") && second.startsWith("wild-"))
         assertNotEquals(first, second, "never the same twice running")
-        assertEquals("turn-right", c.voiceFor("turn-right", emptySet(), have + "turn-right"), "no wild line: the built-in")
+        assertEquals("rerouting", c.voiceFor("rerouting", emptySet(), have + "rerouting"), "no wild line: the built-in")
         c.on = false
-        assertEquals("turn-left", c.voiceFor("turn-left", emptySet(), have), "off: the plain voice")
+        assertEquals("offroute", c.voiceFor("offroute", emptySet(), have), "off: the plain voice")
     }
 
     @Test
@@ -124,14 +124,26 @@ class CharacterTest {
     fun `a slot with only wild lines is still hers, and the prompt plays one`() {
         val have = setOf("wild-turn-left-go-left-if-you-want-to-live")
         val c = Character(Dice())
-        val slots = c.slots(have)
+        val slots = c.slots(have, hers = have)
         assertTrue("turn-left" in slots)
         val items = VoiceLines.playlist("x", "turn-left", "now", null, "Turn left onto Grand", "Grand", true, slots) {
-            c.voiceFor(it, emptySet(), have)
+            c.voiceFor(it, have, have)
         }
         assertEquals(listOf(Item.Clip("wild-turn-left-go-left-if-you-want-to-live", "Turn left")), items)
         c.on = false
-        assertFalse("turn-left" in c.slots(have))
+        assertFalse("turn-left" in c.slots(have, hers = have))
+    }
+
+    @Test
+    fun `a wild line for a direction plays only if she imported it`() {
+        // AGEDASHII: the gate is that SHE named the direction; we never pick one from a pool.
+        val builtIn = setOf("turn-left", "wild-turn-left-go-left")
+        val c = Character(Dice())
+        assertEquals("turn-left", c.voiceFor("turn-left", emptySet(), builtIn, "near"), "built in: never")
+        assertFalse("turn-left" in c.slots(setOf("wild-turn-left-go-left")), "not a sound for the slot unless hers")
+        assertEquals("wild-turn-left-go-left", c.voiceFor("turn-left", setOf("wild-turn-left-go-left"), builtIn, "near"), "hers: yes")
+        assertTrue(Character.DIRECTIONS.containsAll(listOf("turn-left", "sharp-right", "slight-left", "uturn")))
+        assertFalse("continue" in Character.DIRECTIONS)
     }
 
     @Test
@@ -162,8 +174,8 @@ class CharacterTest {
         assertEquals("arrive", c.voiceFor("arrive", emptySet(), have, "far"), "In 1000 ft, MISSION ACCOMPLISHED is a lie")
         assertEquals("arrive", c.voiceFor("arrive", emptySet(), have, "near"))
         assertTrue(c.voiceFor("arrive", emptySet(), have, "now").startsWith("wild-arrive-"))
-        val turns = setOf("turn-left", "wild-turn-left-go", "wild-turn-left-now")
-        assertTrue(c.voiceFor("turn-left", emptySet(), turns, "far").startsWith("wild-"), "other slots are wild on every band")
+        val cont = setOf("continue", "wild-continue-go", "wild-continue-on")
+        assertTrue(c.voiceFor("continue", emptySet(), cont, "far").startsWith("wild-"), "other slots are wild on every band")
     }
 
     @Test
@@ -244,9 +256,9 @@ class CharacterTest {
     fun `sorry follows the failure, and a tap line only with her tap switch`() {
         val c = Character(Dice())
         assertEquals("sorry", Character.mood(c.sorry(pack)!!.name))
-        assertNull(c.tap(pack), "the tap switch is hers to turn on")
-        c.taps = true
-        assertEquals("ui", Character.mood(c.tap(pack)!!.name))
+        assertEquals("ui", Character.mood(c.tap(pack)!!.name), "on by default: she asked for it")
+        c.taps = false
+        assertNull(c.tap(pack))
         assertNull(Character(Dice(Character.RATE.getValue("ui"))).also { it.taps = true }.tap(pack))
     }
 }

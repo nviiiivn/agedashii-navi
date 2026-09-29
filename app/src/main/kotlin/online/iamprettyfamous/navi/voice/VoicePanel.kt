@@ -138,8 +138,8 @@ fun VoicePanel(p: Palette, prefs: Prefs, rev: Int, onChanged: () -> Unit) {
             p.ink(Role.TEXT2), TypeScale.SMALL_SP,
         )
         val distances = have.filter { VoiceLines.distanceFeet(it) != null }.sortedBy { VoiceLines.distanceFeet(it) }
-        val slots = Voice.character.slots(have)
-        val wild = have.groupBy { Character.wildSlot(it) }
+        val slots = Voice.character.slots(have, hers)
+        val wild = have.filter { Voice.character.usable(it, hers) }.groupBy { Character.wildSlot(it) }
         for (name in VoiceLines.FIXED + distances) {
             val source = VoiceLines.source(name, slots)
             val wilds = wild[name].orEmpty().size

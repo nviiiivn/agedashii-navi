@@ -16,6 +16,10 @@ import kotlin.random.Random
  *   about direction is never named for a turn slot: it is a flourish instead.
  *   The arrive slot's wild lines play on ARRIVING only: "In 1000 ft, MISSION
  *   ACCOMPLISHED" says she is there when she is not (AGEDASHII's ruling).
+ *   A DIRECTION slot (turn, slight, sharp, uturn) takes only wild lines SHE
+ *   imported: she heard it and named the direction herself - "GO LEFT IF YOU
+ *   WANT TO LIVE", the line that started all this. Never one from the
+ *   built-in pool: that would be us guessing left from right.
  * - FLOURISHES, `flourish-<mood>-<slug>`: at most one per prompt, always LAST,
  *   after the instruction, its tail, the street and any situation line.
  *   URGENT lines ("DO IT NOW") only on "near" and "now", never "far": half a
@@ -36,8 +40,8 @@ class Character(private val random: Random = Random.Default) {
     /** Her "Character lines" switch. Off: no wild lines, flourishes or cough - the plain recorded voice. */
     @Volatile var on = true
 
-    /** Her switch for a line when she taps something outside the ride screen. */
-    @Volatile var taps = false
+    /** Her switch for a line when she taps Where to or picks a place. On: she asked for it by name. */
+    @Volatile var taps = true
 
     private var lastFlourish: String? = null
     private val lastWild = HashMap<String, String>()
@@ -47,8 +51,14 @@ class Character(private val random: Random = Random.Default) {
     private var angryAt: Double? = null
 
     /** Every slot she has a sound for: her names, plus the slots that only have wild lines. */
-    fun slots(have: Set<String>): Set<String> =
-        if (!on) have else have + have.mapNotNull { wildSlot(it) }
+    fun slots(have: Set<String>, hers: Set<String> = emptySet()): Set<String> =
+        if (!on) have else have + have.filter { usable(it, hers) }.mapNotNull { wildSlot(it) }
+
+    /** A wild line may stand in for its slot: always, but for a direction only if she imported it. */
+    fun usable(name: String, hers: Set<String>): Boolean {
+        val slot = wildSlot(name) ?: return false
+        return slot !in DIRECTIONS || name in hers
+    }
 
     /**
      * The file to play for [slot]: her imported one, else a random wild one
@@ -59,7 +69,7 @@ class Character(private val random: Random = Random.Default) {
     fun voiceFor(slot: String, hers: Set<String>, have: Set<String>, band: String? = null): String {
         if (slot in hers || !on) return slot
         if (slot == ManeuverKind.ARRIVE && band != null && band != "now") return slot
-        val wild = have.filter { wildSlot(it) == slot }.sorted()
+        val wild = have.filter { wildSlot(it) == slot && usable(it, hers) }.sorted()
         if (wild.isEmpty()) return slot
         // One wild line alone takes turns with the built-in one, so it is still
         // never the same twice running (minion 3's Flet rule).
@@ -159,6 +169,12 @@ class Character(private val random: Random = Random.Default) {
 
         /** Which mood a prompt gets when several apply. */
         val PRIORITY = listOf("arrival", "angry", "scold", "start", "urgent")
+
+        /** The slots that say which way: a wild line for one must be hers. */
+        val DIRECTIONS = setOf(
+            ManeuverKind.TURN_LEFT, ManeuverKind.TURN_RIGHT, ManeuverKind.SLIGHT_LEFT, ManeuverKind.SLIGHT_RIGHT,
+            ManeuverKind.SHARP_LEFT, ManeuverKind.SHARP_RIGHT, ManeuverKind.UTURN,
+        )
 
         /** Seconds between two angry lines, as for speeding: one per minute at most. */
         const val ANGRY_EVERY_S = 60.0

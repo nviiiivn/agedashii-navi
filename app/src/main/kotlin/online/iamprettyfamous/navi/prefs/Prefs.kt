@@ -58,9 +58,9 @@ class Prefs(context: Context) {
         get() = raw.getBoolean("voice_character", true)
         set(v) = raw.edit().putBoolean("voice_character", v).apply()
 
-    /** A line, rarely, when she opens Where to or picks a place. Hers to turn on. */
+    /** A line, rarely, when she opens Where to or picks a place. On: she asked for it ("WANT 2"). */
     var voiceTaps: Boolean
-        get() = raw.getBoolean("voice_taps", false)
+        get() = raw.getBoolean("voice_taps", true)
         set(v) = raw.edit().putBoolean("voice_taps", v).apply()
 
     var keepAwake: Boolean

@@ -262,8 +262,8 @@ object Voice {
         val say = status.say
         if (say == null && cues.isEmpty()) return
         val have = clipNames()
-        val slots = character.slots(have)
         val hers = herNames()
+        val slots = character.slots(have, hers)
         val choose = { slot: String -> character.voiceFor(slot, hers, have, status.band) }
         val lines = cues.flatMap { VoiceLines.situation(it, slots, choose) }
         val turn = say?.let {
