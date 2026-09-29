@@ -64,34 +64,32 @@ class VoiceLinesTest {
     }
 
     @Test
-    fun `the nearest clip she HAS, within one and a half times, the smaller on a tie`() {
+    fun `the nearest clip she HAS, within a quarter either way, the shorter on a tie`() {
+        assertEquals(1.25, VoiceLines.DISTANCE_BOUND)
         assertEquals("dist-200ft", VoiceLines.nearestDistance(ft(200.0), have))
-        assertEquals("dist-400ft", VoiceLines.nearestDistance(ft(300.0), have), "300 is nearer 400 than 200 by ratio")
-        assertEquals("dist-200ft", VoiceLines.nearestDistance(ft(Math.sqrt(200.0 * 400.0)), have), "a tie goes to the smaller")
-        assertEquals("dist-1500ft", VoiceLines.nearestDistance(ft(2250.0), have), "exactly x1.5 is inside")
-        assertNull(VoiceLines.nearestDistance(ft(2260.0), have), "past x1.5: the phone says it")
-        assertEquals("dist-200ft", VoiceLines.nearestDistance(ft(134.0), have))
-        assertNull(VoiceLines.nearestDistance(ft(133.0), have))
+        assertEquals("dist-400ft", VoiceLines.nearestDistance(ft(350.0), have), "350 is nearer 400 than 200 by ratio")
+        assertNull(VoiceLines.nearestDistance(ft(300.0), have), "300 is 1.33 from 400 and 1.5 from 200: the phone says it")
+        assertEquals("dist-200ft", VoiceLines.nearestDistance(ft(250.0), have), "exactly x1.25 is inside")
+        assertNull(VoiceLines.nearestDistance(ft(251.0), have))
+        assertEquals("dist-1500ft", VoiceLines.nearestDistance(ft(1875.0), have))
         assertNull(VoiceLines.nearestDistance(ft(5280.0), have), "two hundred for a mile away is a wrong instruction")
         assertNull(VoiceLines.nearestDistance(null, have))
+        // A true tie, between two clips 1.25 x 1.25 apart, goes to the shorter.
+        val tie = setOf("dist-400ft", "dist-625ft")
+        assertEquals("dist-400ft", VoiceLines.nearestDistance(ft(500.0), tie))
     }
 
     @Test
-    fun `minion 3's shared vectors - the Flet app runs the same table`() {
-        // tests/test_voicelines.py WhichDistance, prompt in feet.
-        val arnold = setOf("dist-200ft", "dist-400ft", "dist-800ft", "dist-1500ft")
+    fun `her renamed set covers what minion 3 measured, and no further`() {
+        // minion 5's pack: each clip says what its name says. At x1.25 they cover
+        // 422-660, 1056-1650, 2112-3300 and 4224-6600 ft (minion 3).
+        val set = setOf("dist-0.1mile", "dist-quarter", "dist-half", "dist-1mile")
         val want = mapOf(
-            148.0 to "dist-200ft", 200.0 to "dist-200ft", 279.0 to "dist-200ft", 289.0 to "dist-400ft",
-            820.0 to "dist-800ft", 1640.0 to "dist-1500ft", 2247.0 to "dist-1500ft", 98.0 to null,
-            2251.0 to null, 5280.0 to null, 0.0 to null, Math.sqrt(200.0 * 400.0) to "dist-200ft",
+            423.0 to "dist-0.1mile", 528.0 to "dist-0.1mile", 660.0 to "dist-0.1mile", 421.0 to null, 661.0 to null,
+            800.0 to null, 1056.0 to "dist-quarter", 1320.0 to "dist-quarter", 1650.0 to "dist-quarter", 1651.0 to null,
+            2112.0 to "dist-half", 3300.0 to "dist-half", 4224.0 to "dist-1mile", 6600.0 to "dist-1mile", 6601.0 to null,
         )
-        for ((feet, clip) in want) assertEquals(clip, VoiceLines.nearestDistance(ft(feet), arnold), "$feet ft")
-        assertNull(VoiceLines.nearestDistance(null, arnold))
-        assertNull(VoiceLines.nearestDistance(ft(400.0), emptySet()))
-        val legacy = setOf("dist-quarter", "dist-0.5mile", "dist-2miles")
-        assertEquals("dist-quarter", VoiceLines.nearestDistance(ft(1300.0), legacy))
-        assertEquals("dist-0.5mile", VoiceLines.nearestDistance(ft(2700.0), legacy))
-        assertEquals("dist-2miles", VoiceLines.nearestDistance(ft(10000.0), legacy))
+        for ((feet, clip) in want) assertEquals(clip, VoiceLines.nearestDistance(ft(feet), set), "$feet ft")
     }
 
     @Test

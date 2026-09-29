@@ -36,9 +36,10 @@ object VoiceLines {
      * How far off a distance clip may be before the phone says the distance
      * instead, as a ratio either way, inclusive. "Two hundred" for a turn a mile
      * away is a wrong instruction, and a wrong distance at speed is worse than a
-     * robot.
+     * robot. 1.25, not 1.5 (AGEDASHII, with the Flet app): at 1.5 an 800 ft
+     * prompt played "in 0.1 miles" on emulator-5556.
      */
-    const val DISTANCE_BOUND = 1.5
+    const val DISTANCE_BOUND = 1.25
 
     /**
      * What the phone says for a situation she has no clip for. `speeding` has

@@ -125,8 +125,8 @@ fun VoicePanel(p: Palette, prefs: Prefs, rev: Int, onChanged: () -> Unit) {
         }
 
         Line(
-            "Distances: add any dist-<N>ft or dist-<N>mile. A turn's distance uses your nearest one within 1.5 times; " +
-                "past that the phone says it.",
+            "Distances: add any dist-<N>ft or dist-<N>mile. A turn's distance uses your nearest one within " +
+                "${VoiceLines.DISTANCE_BOUND} times; past that the phone says it.",
             p.ink(Role.TEXT2), TypeScale.SMALL_SP,
         )
         val distances = have.filter { VoiceLines.distanceFeet(it) != null }.sortedBy { VoiceLines.distanceFeet(it) }

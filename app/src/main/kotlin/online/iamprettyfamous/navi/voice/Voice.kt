@@ -85,6 +85,13 @@ object Voice {
     /** A prompt held while the voice starts or is checked, and when it came. */
     private class Pending(val items: List<Item>, val label: String, val at: Long)
 
+    /**
+     * A newer prompt that came while one was playing: it starts when the item
+     * now playing ends, replacing the rest of that prompt - never cutting a
+     * word off. Only the newest waits; a "now" prompt does not wait at all.
+     */
+    private var queued: Pending? = null
+
     /** What the current prompt plays, one item after another, and which is playing. */
     private var sequence: List<Item> = emptyList()
     private var step = 0
@@ -249,10 +256,18 @@ object Voice {
         val say = status.say
         if (say == null && cues.isEmpty()) return
         val have = clipNames()
-        val items = cues.flatMap { VoiceLines.situation(it, have) } + (say?.let {
+        val lines = cues.flatMap { VoiceLines.situation(it, have) }
+        val turn = say?.let {
             VoiceLines.playlist(it, status.kind, status.band, status.turnInM, status.instruction, status.street, imperial, have, streets)
-        } ?: emptyList())
-        play(items, listOfNotNull(cues.joinToString(", ").ifEmpty { null }, say).joinToString(" | "))
+        } ?: emptyList()
+        // The turn she is at plays FIRST and cuts in at once; anything else
+        // waits for the word being said to finish (the Flet app's rule).
+        val now = status.band == "now"
+        play(
+            if (now) turn + lines else lines + turn,
+            listOfNotNull(cues.joinToString(", ").ifEmpty { null }, say).joinToString(" | "),
+            urgent = now,
+        )
     }
 
     /** Her clips' names, or none before the engine started. Any thread: a directory listing. */
@@ -264,10 +279,10 @@ object Voice {
      * unless every item is her clip, which needs no engine. [preview] plays even
      * with spoken turns off.
      */
-    fun play(items: List<Item>, label: String, preview: Boolean = false) {
+    fun play(items: List<Item>, label: String, preview: Boolean = false, urgent: Boolean = preview) {
         main.post {
             // A preview is her testing a file in Settings: it plays whether or not
-            // spoken turns are on for the ride.
+            // spoken turns are on for the ride, and a new tap cuts in at once.
             if ((!enabled && !preview) || items.isEmpty()) {
                 if (items.isNotEmpty()) Log.i(TAG, "not said (voice off): $label")
                 return@post
@@ -280,17 +295,29 @@ object Voice {
                 Log.i(TAG, "not said yet ($why): $label")
                 return@post
             }
+            if (current != null && !urgent) {
+                // Never cut a word off: this starts when the current item ends.
+                queued = Pending(items, label, SystemClock.elapsedRealtime())
+                Log.i(TAG, "after this item: $label")
+                return@post
+            }
             stopCurrent()
-            val id = "p${++seq}"
-            current = id
-            sequence = items
-            step = 0
-            speakingNow = true
-            holdFocus()
-            _state.value = _state.value.copy(speaking = true, last = label, failed = "")
-            Log.i(TAG, "say: $label")
-            playStep(id)
+            queued = null
+            begin(items, label)
         }
+    }
+
+    /** Main thread: start [items] as the current utterance. Focus is kept across a hand-over. */
+    private fun begin(items: List<Item>, label: String) {
+        val id = "p${++seq}"
+        current = id
+        sequence = items
+        step = 0
+        speakingNow = true
+        holdFocus()
+        _state.value = _state.value.copy(speaking = true, last = label, failed = "")
+        Log.i(TAG, "say: $label")
+        playStep(id)
     }
 
     /** Main thread. The next item of [sequence], or the end of the utterance. */
@@ -346,6 +373,12 @@ object Voice {
     private fun advance(id: String) {
         if (id != current) return
         releasePlayer()
+        val next = queued
+        if (next != null) {
+            // The item that was playing has finished: the newer prompt replaces the rest.
+            queued = null
+            return begin(next.items, next.label)
+        }
         step++
         playStep(id)
     }
