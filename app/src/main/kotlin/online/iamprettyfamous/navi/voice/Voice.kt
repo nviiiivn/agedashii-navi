@@ -270,16 +270,20 @@ object Voice {
             VoiceLines.core(status.kind, status.band, status.turnInM, status.instruction, status.street, imperial, slots, streets, choose)
         }
         val whole = if (say != null && core == null) listOf(Item.Speak(say)) else emptyList()
+        // The maneuver right after, too close for a warning of its own: "and then turn left".
+        val then = status.then?.takeIf { say != null && status.band == "now" }
+        val andThen = then?.let { VoiceLines.andThen(it.kind, it.instruction, imperial, slots, choose) } ?: emptyList()
         // Her character arranges the instruction's pieces and adds up to two
         // flourishes, always after it; the distance and direction stay whole.
         val arranged = character.arrange(
             core, whole, status.band, status.kind, if (say != null) status.maneuver else null, cues, have, hers,
             now = SystemClock.elapsedRealtime() / 1000.0,
+            flourishes = andThen.isEmpty(),
         )
         // The turn she is at plays FIRST and cuts in at once; anything else
         // waits for the word being said to finish (the Flet app's rule).
         val now = status.band == "now"
-        val turn = arranged.turn
+        val turn = arranged.turn + andThen
         play(
             (if (now) turn + lines else lines + turn) + arranged.after,
             listOfNotNull(

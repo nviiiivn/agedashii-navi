@@ -50,6 +50,8 @@ object VoiceLines {
         // Her line when the app opens ("That's amazing, where are we?"): hers or
         // nothing - a robot saying the app has opened is noise.
         "open" to null,
+        // Before the maneuver right after this one, on this one's "now" (Follower's then).
+        "and-then" to "and then",
     )
 
     /** Every fixed name: the twelve maneuvers, then the situations. Distances are open-ended beside them. */
@@ -172,6 +174,21 @@ object VoiceLines {
      * the street. [slot] is the clip name the maneuver was chosen for, before
      * any wild line. Null: none of her clips applies, say our whole sentence.
      */
+    /**
+     * "And then" and the maneuver right after this one, spoken at this one's
+     * "now": her link line (or the phone's "and then"), then the next
+     * maneuver as it would be said at its own "now" - maneuver and its tail
+     * (an exit's side, a roundabout's exit), never its distance or street.
+     * All of it soft: a newer prompt cuts it.
+     */
+    fun andThen(kind: String?, instruction: String?, imperial: Boolean, have: Set<String>, choose: (String) -> String = { it }): List<Item> {
+        val link = if ("and-then" in have) Item.Clip(choose("and-then"), "and then", soft = true) else Item.Speak("and then")
+        val next = core(kind, "now", null, instruction, null, imperial, have, false, choose)?.classic()
+            ?: listOfNotNull(kind?.let { standIn(it, imperial) }?.let { Item.Speak(it) }) +
+            listOfNotNull(afterHerLine(kind, instruction)?.let { Item.Speak(it) })
+        return listOf(link) + next.map { if (it is Item.Clip) it.copy(soft = true) else it }
+    }
+
     data class Core(val distance: Item?, val maneuver: Item, val slot: String?, val glued: List<Item>) {
         /** Distance, maneuver, tail: the order she has always heard. */
         fun classic(): List<Item> = listOfNotNull(distance) + maneuver + glued

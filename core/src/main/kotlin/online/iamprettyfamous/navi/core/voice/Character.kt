@@ -154,6 +154,7 @@ class Character(private val random: Random = Random.Default) {
         have: Set<String>,
         hers: Set<String>,
         now: Double = 0.0,
+        flourishes: Boolean = true,
     ): Arranged {
         val wide = band == "far" || band == "near"
         val shaped = on && wide && core != null
@@ -164,14 +165,21 @@ class Character(private val random: Random = Random.Default) {
             core!!.distance != null -> JOIN
             else -> NONE
         }
-        val cough = if (where != NONE) cough(have) else null
+        // Never two prompts running: any prompt without a cough - "now", our
+        // own sentence - clears the way for the next (minion 3's Flet rule).
+        val blocked = coughedLast
+        val cough = if (where != NONE && !blocked) cough(have) else null
+        coughedLast = cough != null
         val coughAt = if (cough != null) where else NONE
-        val f1 = flourish(band, kind, maneuver, cues, have, now)
-        val f2 = if (f1 != null && wide) second(f1, band, kind, maneuver, cues, have, now) else null
+        val before = lastFlourish
+        // A "now" that carries "and then" stays short: no flourish on it.
+        val f1 = if (flourishes) flourish(band, kind, maneuver, cues, have, now) else null
+        val f2 = if (f1 != null && wide) second(f1, before, band, kind, maneuver, cues, have, now) else null
         val after = listOfNotNull(f1, f2)
-        if (wide) {
+        // The shape counts only far/near prompts with a distance to arrange.
+        if (shaped && core!!.distance != null) {
             var shape = Triple(first, coughAt, after.size)
-            if (shape == lastShape && core?.distance != null && shaped) {
+            if (shape == lastShape) {
                 first = !first
                 shape = Triple(first, coughAt, after.size)
             }
@@ -208,18 +216,12 @@ class Character(private val random: Random = Random.Default) {
         return if ((a in hers) == mine && (b in hers) == mine) a to b else null
     }
 
-    /** The cough, rarely, never in two prompts running that could have had one. */
+    /** The cough, rarely. */
     private fun cough(have: Set<String>): Item.Clip? {
         val pool = have.filter(::isCough).sorted()
-        if (pool.isEmpty()) return null
-        if (coughedLast) {
-            coughedLast = false
-            return null
-        }
-        if (random.nextDouble() >= COUGH_RATE) return null
+        if (pool.isEmpty() || random.nextDouble() >= COUGH_RATE) return null
         val pick = fresh(pool, lastCough)
         lastCough = pick
-        coughedLast = true
         return Item.Clip(pick, null, soft = true)
     }
 
@@ -227,9 +229,11 @@ class Character(private val random: Random = Random.Default) {
      * A second flourish after [first], [P_SECOND] of the time: a mood picked
      * evenly among those this moment allows (angry after off route or on a
      * near turn - under the minute - scold when speeding, start at a start,
-     * urgent on near) that still has a line other than [first], then a line.
+     * urgent on near) that still has a line other than [first], then a line -
+     * never [first], and not [before] (the flourish heard before it) when
+     * there is a choice.
      */
-    private fun second(first: Item.Clip, band: String?, kind: String?, maneuver: Any?, cues: List<String>, have: Set<String>, now: Double): Item.Clip? {
+    private fun second(first: Item.Clip, before: String?, band: String?, kind: String?, maneuver: Any?, cues: List<String>, have: Set<String>, now: Double): Item.Clip? {
         if (kind == ManeuverKind.ARRIVE || random.nextDouble() >= P_SECOND) return null
         val angryOk = angryAt.let { it == null || now - it >= ANGRY_EVERY_S }
         val moods = LinkedHashSet<String>()
@@ -243,7 +247,7 @@ class Character(private val random: Random = Random.Default) {
         val open = moods.filter { m -> have.any { mood(it) == m && it != first.name } }
         if (open.isEmpty()) return null
         val mood = open[random.nextInt(open.size)]
-        val pick = fresh(have.filter { mood(it) == mood && it != first.name }.sorted(), lastFlourish)
+        val pick = fresh(have.filter { mood(it) == mood && it != first.name }.sorted(), before)
         lastFlourish = pick
         return Item.Clip(pick, null, soft = true)
     }

@@ -300,6 +300,22 @@ class CharacterTest {
     }
 
     @Test
+    fun `edges agreed with minion 3 - a prompt with no distance keeps the shape, any prompt without a cough clears it`() {
+        val C = Item.Clip("interject-cough", null, soft = true)
+        // shape: A classic; B far with no distance neither counts nor resets; C classic again is a repeat of A, so flipped
+        val s = Character(Dice(0.5, 0.99, 0.99, 0.5, 0.99))
+        fun near() = s.arrange(core("turn-left", "near", ft(500.0), "Turn left", plain), emptyList(), "near", "turn-left", Any(), emptyList(), plain, emptySet()).turn
+        assertEquals(listOf(D, L), near())
+        s.arrange(VoiceLines.core("turn-left", "far", null, "Turn left", null, true, plain), emptyList(), "far", "turn-left", Any(), emptyList(), plain, emptySet())
+        assertEquals(listOf(L, D), near(), "flipped: the prompt between had no distance")
+        // the cough: near coughs, the "now" after it has none, so the next near may cough again
+        val c = Character(Dice(0.5, 0.0, 0.5, 0.0))
+        assertEquals(listOf(D, C, L), c.arrange(core("turn-left", "near", ft(500.0), "Turn left", plain), emptyList(), "near", "turn-left", Any(), emptyList(), plain, emptySet()).turn)
+        c.arrange(core("turn-left", "now", null, "Turn left", plain), emptyList(), "now", "turn-left", Any(), emptyList(), plain, emptySet())
+        assertEquals(listOf(L, C, D), c.arrange(core("turn-left", "near", ft(500.0), "Turn left", plain), emptyList(), "near", "turn-left", Any(), emptyList(), plain, emptySet()).turn, "a repeat of the shape is flipped, and the cough comes along")
+    }
+
+    @Test
     fun `two flourishes - never urgent on far, one at most on now`() {
         val have = plain + setOf("flourish-urgent-do-it-now", "flourish-urgent-right-now", "flourish-angry-damn-it")
         // order, (no cough: rolls high), F1 rate, F1 pick, F2 rate, F2 mood, F2 pick
