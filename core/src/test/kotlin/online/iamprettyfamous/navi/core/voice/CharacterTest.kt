@@ -51,6 +51,53 @@ class CharacterTest {
     }
 
     @Test
+    fun `minion 5's staged pool is taken, every file, and the wild lines find their slots`() {
+        val files = listOf(
+            "arrive.mp3", "continue.mp3", "dist-0.1mile.mp3", "dist-1mile.mp3", "dist-half.mp3",
+            "dist-quarter.mp3", "exit.mp3", "flourish-angry-bastard.mp3",
+            "flourish-angry-dont-bullshit-me.mp3", "flourish-angry-lack-discipline.mp3",
+            "flourish-angry-no.mp3", "flourish-angry-oh-shit.mp3", "flourish-angry-stop-whining.mp3",
+            "flourish-angry-wtf.mp3", "flourish-angry-you-bastards.mp3", "flourish-angry-you-idiot.mp3",
+            "flourish-arrival-goodbye.mp3", "flourish-arrival-investigation-over.mp3",
+            "flourish-arrival-stop-it.mp3", "flourish-scold-are-you-crazy.mp3",
+            "flourish-scold-chill-out.mp3", "flourish-scold-dont-do-that.mp3", "flourish-scold-drunk-2.mp3",
+            "flourish-scold-drunk.mp3", "flourish-scold-ridiculous.mp3", "flourish-scold-stop-that.mp3",
+            "flourish-scold-this-is-an-arrest.mp3", "flourish-sorry-count-on-me.mp3",
+            "flourish-sorry-i-dont-know.mp3", "flourish-sorry-i-lied.mp3", "flourish-sorry-i-was-wrong.mp3",
+            "flourish-sorry-im-sorry.mp3", "flourish-sorry-negative.mp3", "flourish-sorry-no-deal.mp3",
+            "flourish-sorry-really-sorry.mp3", "flourish-sorry-so-sorry.mp3", "flourish-start-aagh.mp3",
+            "flourish-start-california.mp3", "flourish-start-good-morning.mp3",
+            "flourish-start-ill-be-back.mp3", "flourish-start-listen-carefully.mp3",
+            "flourish-ui-ask-questions.mp3", "flourish-ui-breakfast.mp3", "flourish-ui-correct.mp3",
+            "flourish-ui-excellent.mp3", "flourish-ui-give-me-your-address.mp3",
+            "flourish-ui-names-and-addresses.mp3", "flourish-ui-ok.mp3", "flourish-ui-what-do-you-want.mp3",
+            "flourish-urgent-do-it-now.mp3", "flourish-urgent-immediately.mp3",
+            "flourish-urgent-just-do-it.mp3", "flourish-urgent-move.mp3", "flourish-urgent-no-problemo.mp3",
+            "flourish-urgent-now.mp3", "flourish-urgent-quickly.mp3", "flourish-urgent-right-now.mp3",
+            "flourish-urgent-trust-me.mp3", "flourish-urgent-yeaargh.mp3", "hours-1.mp3", "hours-2.mp3",
+            "interject-cough-2.mp3", "interject-cough.mp3", "merge.mp3", "number-1.mp3", "number-10.mp3",
+            "number-2.mp3", "number-20.mp3", "number-3.mp3", "number-4.mp3", "number-5.mp3", "number-7.mp3",
+            "number-8.mp3", "offroute.mp3", "rerouting.mp3", "roundabout.mp3", "seconds-1.mp3",
+            "sharp-left.mp3", "sharp-right.mp3", "slight-left.mp3", "slight-right.mp3", "speeding.mp3",
+            "start.mp3", "turn-left.mp3", "turn-right.mp3", "uturn.mp3", "wild-arrive-choppa.mp3",
+            "wild-arrive-game-over.mp3", "wild-arrive-hasta-la-vista.mp3",
+            "wild-arrive-mission-accomplished.mp3", "wild-continue-go-on.mp3",
+            "wild-offroute-big-mistake.mp3", "wild-offroute-what-the-hell-did-you-do.mp3",
+            "wild-offroute-what-were-you-thinking.mp3", "wild-rerouting-hold-on.mp3",
+            "wild-rerouting-wait-a-minute.mp3", "wild-speeding-cop.mp3", "wild-speeding-police-officer.mp3",
+            "wild-start-come-with-me.mp3"
+        )
+        val names = files.map { VoiceLines.parse(it).first }
+        assertEquals(emptyList(), files.filterIndexed { i, _ -> names[i] == null }, "refused")
+        val have = names.filterNotNull().toSet()
+        val wild = have.filter { it.startsWith("wild-") }
+        assertTrue(wild.isNotEmpty())
+        assertEquals(emptyList(), wild.filter { Character.wildSlot(it) == null }, "a wild line with no slot")
+        assertEquals(Character.MOODS.toSet(), have.mapNotNull { Character.mood(it) }.toSet(), "every mood has lines")
+        assertTrue(have.any(Character::isCough) && have.any(Character::isNumber))
+    }
+
+    @Test
     fun `the chain - hers, then a wild one never twice running, then the built-in`() {
         val have = setOf("turn-left", "wild-turn-left-a", "wild-turn-left-b")
         val c = Character(Dice(picks = listOf(0, 0, 0)))
