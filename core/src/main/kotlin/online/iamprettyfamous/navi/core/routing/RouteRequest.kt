@@ -7,6 +7,7 @@ import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
 import online.iamprettyfamous.navi.core.geo.Geo
 import online.iamprettyfamous.navi.core.geo.LatLon
+import kotlin.math.roundToInt
 
 /**
  * The route request the phone gives its own Valhalla (valhalla-mobile 0.6.3,
@@ -44,6 +45,9 @@ object RouteRequest {
      */
     const val DESTINATION_MIN_ROAD_CLASS = "residential"
 
+    /** How far the road at the start may point from her heading (Valhalla's default is 60). */
+    const val HEADING_TOLERANCE_DEG = 45
+
     /**
      * A motorcycle route from where she is to where she asked.
      *
@@ -52,12 +56,20 @@ object RouteRequest {
      * use_highways, use_tolls, use_trails, top_speed), though her Python
      * client (routing.py:1609) sends both and Valhalla silently ignores them.
      */
-    fun motorcycle(origin: LatLon, destination: LatLon, imperial: Boolean = true): String = buildJsonObject {
+    fun motorcycle(origin: LatLon, destination: LatLon, imperial: Boolean = true, heading: Double? = null): String = buildJsonObject {
         putJsonArray("locations") {
             addJsonObject {
                 put("lat", origin.lat)
                 put("lon", origin.lon)
                 put("type", "break")
+                // The way she is facing, when she is moving and it is known: a
+                // re-route then carries on ahead of her instead of starting with
+                // whatever direction is shortest from where she stands - which
+                // turned one wrong turn into six prompts in twelve seconds.
+                if (heading != null) {
+                    put("heading", ((heading.roundToInt() % 360) + 360) % 360)
+                    put("heading_tolerance", HEADING_TOLERANCE_DEG)
+                }
             }
             addJsonObject {
                 put("lat", destination.lat)

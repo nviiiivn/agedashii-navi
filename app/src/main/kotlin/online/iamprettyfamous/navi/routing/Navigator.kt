@@ -4,6 +4,7 @@ import android.location.Location
 import android.util.Log
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import online.iamprettyfamous.navi.core.geo.Geo
 import online.iamprettyfamous.navi.core.geo.LatLon
 import online.iamprettyfamous.navi.core.geo.RouteLine
 import online.iamprettyfamous.navi.core.guidance.Follower
@@ -117,6 +118,8 @@ object Navigator {
             // ride, picked while moving, starts on the speed bands too.
             val speed = if (fix.hasSpeed()) fix.speed.toDouble() else null
             speedMs = speed
+            heading = headingOf(fix, speed, previous, p)
+            previous = p
             if (follower.route == null) return
             val now = System.currentTimeMillis() / 1000.0
             val status = follower.update(p, speed, now)
@@ -136,8 +139,32 @@ object Navigator {
     }
 
     private fun ask(from: LatLon, dest: LatLon, gen: Int, first: Boolean) {
-        Router.route(from, dest, imperial) { line -> answered(line, dest, gen, first) }
+        val facing = heading
+        if (facing != null) Log.i(TAG, "routing from heading %.0f°".format(facing))
+        Router.route(from, dest, imperial, facing) { line -> answered(line, dest, gen, first) }
     }
+
+    // The way she is facing, or null when it cannot be trusted.
+    private var heading: Double? = null
+    private var previous: LatLon? = null
+
+    /**
+     * Her heading, only while she is moving: at a standstill a GPS bearing
+     * means nothing, and a stale one would route her off a direction she no
+     * longer has. The receiver's own bearing when it says it is good to 20°;
+     * otherwise the course between this fix and the last, if she covered 8 m.
+     */
+    private fun headingOf(fix: Location, speed: Double?, prev: LatLon?, p: LatLon): Double? {
+        if (speed == null || speed < HEADING_MIN_MS) return null
+        if (fix.hasBearing() && fix.hasBearingAccuracy() && fix.bearingAccuracyDegrees <= 20f) {
+            return fix.bearing.toDouble()
+        }
+        if (prev != null && Geo.haversineM(prev, p) >= 8.0) return Geo.bearing(prev, p)
+        return null
+    }
+
+    /** Below this she is stopped or creeping, and no bearing is trusted (m/s, ~7 mph). */
+    private const val HEADING_MIN_MS = 3.0
 
     private fun answered(line: RouteLine, dest: LatLon, gen: Int, first: Boolean) {
         synchronized(lock) {
