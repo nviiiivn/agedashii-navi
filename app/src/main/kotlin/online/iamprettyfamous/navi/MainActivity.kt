@@ -50,6 +50,7 @@ import online.iamprettyfamous.navi.ui.SettingsPanel
 import online.iamprettyfamous.navi.ui.micAccount
 import online.iamprettyfamous.navi.routing.Router
 import online.iamprettyfamous.navi.core.geo.LatLon
+import online.iamprettyfamous.navi.core.geo.Maneuver
 import androidx.activity.compose.BackHandler
 import online.iamprettyfamous.navi.ui.ButtonColumnLayout
 import online.iamprettyfamous.navi.ui.TopStack
@@ -285,7 +286,9 @@ class MainActivity : ComponentActivity() {
         intent?.getStringExtra("prompt")?.split(",", limit = 4)?.takeIf { it.size == 4 }?.let { (kind, band, metres, words) ->
             val m = metres.toDoubleOrNull()
             val say = Guidance.spoken(words, "", m, settings.imperial, band)
-            Voice.prompt(Status(ok = true, say = say, kind = kind, band = band, turnInM = m, instruction = words), settings.imperial)
+            // Each test prompt is its own maneuver, as on a route, so her character's per-maneuver rules apply.
+            val man = Maneuver(words, "", 0.0, LatLon(0.0, 0.0), ++testManeuvers, 0.0, kind = kind)
+            Voice.prompt(Status(ok = true, maneuver = man, say = say, kind = kind, band = band, turnInM = m, instruction = words), settings.imperial)
         }
         if (intent?.hasExtra("mic") == true) {
             applySetting(if (intent.getBooleanExtra("mic", false)) Changed.MIC_ON else Changed.MIC_OFF)
@@ -297,6 +300,8 @@ class MainActivity : ComponentActivity() {
         if (want && !rec) startRecording()
         if (!want && rec) RideService.stop(this)
     }
+
+    private var testManeuvers = 0
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
