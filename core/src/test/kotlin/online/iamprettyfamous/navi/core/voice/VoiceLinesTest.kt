@@ -181,7 +181,30 @@ class VoiceLinesTest {
         assertFalse(cues.refused(), "still the same spell")
         cues.update(true, false, dest, false, false, 20.0)
         cues.update(true, true, dest, true, false, 30.0)
-        assertTrue(cues.refused(), "a new spell may say it again")
+        assertFalse(cues.refused(), "10 s on a new route and off again: the same spell")
+        cues.update(true, false, dest, false, false, 40.0)
+        cues.update(true, false, dest, false, false, 71.0)
+        cues.update(true, true, dest, true, false, 75.0)
+        assertTrue(cues.refused(), "back on route 31 s, then lost again: a new spell may say it")
+    }
+
+    @Test
+    fun `riding away from each new route - the first says so at once, then one line per 30 s`() {
+        // AGEDASHII's ruling, from 5556: six situation lines in 31 s.
+        val cues = VoiceLines.Cues()
+        val dest = Any()
+        cues.update(true, false, dest, false, false, 0.0)
+        assertEquals(listOf("offroute", "rerouting"), cues.update(true, true, dest, true, false, 10.0), "the first always, at once")
+        assertEquals(emptyList(), cues.update(true, false, dest, false, false, 11.0), "the new route puts her on it")
+        assertEquals(emptyList(), cues.update(true, true, dest, false, false, 17.5), "off it again: held")
+        assertEquals(emptyList(), cues.update(true, true, dest, true, false, 22.6))
+        cues.update(true, false, dest, false, false, 23.6)
+        assertEquals(emptyList(), cues.update(true, true, dest, false, false, 30.7))
+        cues.update(true, false, dest, false, false, 40.5)
+        assertEquals(listOf("offroute"), cues.update(true, true, dest, false, false, 41.0), "30 s after the last line, one more")
+        cues.update(true, false, dest, false, false, 45.0)
+        cues.update(true, false, dest, false, false, 76.0)
+        assertEquals(listOf("offroute", "rerouting"), cues.update(true, true, dest, true, false, 80.0), "back on route 31 s: a new spell speaks at once")
     }
 
     @Test
@@ -200,9 +223,9 @@ class VoiceLinesTest {
         val dest = Any()
         assertEquals(listOf("start"), cues.update(true, false, dest, false, false, 0.0))
         assertEquals(emptyList(), cues.update(true, false, dest, false, false, 1.0), "the same destination is no new start")
-        assertEquals(listOf("offroute"), cues.update(true, true, dest, false, false, 2.0))
-        assertEquals(listOf("rerouting"), cues.update(true, true, dest, true, false, 3.0))
-        assertEquals(emptyList(), cues.update(true, true, dest, true, false, 15.0), "once per off-route spell")
+        assertEquals(listOf("offroute", "rerouting"), cues.update(true, true, dest, true, false, 2.0))
+        assertEquals(emptyList(), cues.update(true, true, dest, true, false, 3.0), "once per off-route spell")
+        assertEquals(emptyList(), cues.update(true, true, dest, true, false, 15.0))
         assertEquals(listOf("speeding"), cues.update(true, false, dest, false, true, 20.0))
         assertEquals(emptyList(), cues.update(true, false, dest, false, false, 21.0))
         assertEquals(emptyList(), cues.update(true, false, dest, false, true, 30.0), "not again inside a minute")

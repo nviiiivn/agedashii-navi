@@ -251,6 +251,18 @@ object VoiceLines {
     const val SPEEDING_EVERY_S = 60.0
 
     /**
+     * Within one off-route spell, seconds between two situation lines ("off
+     * route", "re-routing"). The first of a spell is never held: she is going
+     * the wrong way and must hear it. Riding away from each new route said six
+     * in 31 s (emulator-5556), talking over the new route's first turn. The
+     * turn itself is guidance, never held by this.
+     */
+    const val SITUATION_EVERY_S = 30.0
+
+    /** Back on a route this long ends the spell: going wrong after that is new, and speaks at once. */
+    const val REJOIN_S = 30.0
+
+    /**
      * Which situation lines a fix calls for - each on its EDGE, never per fix.
      * start: a route to a NEW destination is up (a re-route of the same one is
      * not); offroute: off-route just confirmed; rerouting: the first re-route
@@ -265,6 +277,12 @@ object VoiceLines {
         private var fast = false
         private var fastAt: Double? = null
         private var refusalSaid = false
+        // The off-route SPELL: from the first "off route" until she has been
+        // back on a route for [REJOIN_S]. A new route puts her "on" it for a
+        // moment; riding away from it again is the same spell, not a new one.
+        private var spell = false
+        private var onSince: Double? = null
+        private var situationAt: Double? = null
 
         fun update(ok: Boolean, offRoute: Boolean, destination: Any?, reroute: Boolean, over: Boolean, now: Double): List<String> {
             val names = ArrayList<String>()
@@ -272,15 +290,31 @@ object VoiceLines {
                 this.destination = destination
                 names += "start"
             }
-            if (offRoute && !off) names += "offroute"
+            if (offRoute) onSince = null else if (onSince == null) onSince = now
+            val back = onSince
+            if (spell && back != null && now - back >= REJOIN_S) {
+                spell = false
+                refusalSaid = false
+            }
+            val situation = ArrayList<String>()
+            if (offRoute && !off) situation += "offroute"
             if (!offRoute) {
                 rerouted = false
-                refusalSaid = false
             } else if (reroute && !rerouted) {
                 rerouted = true
-                names += "rerouting"
+                situation += "rerouting"
             }
             off = offRoute
+            if (situation.isNotEmpty()) {
+                // The first of a spell always speaks, at once; after that, one
+                // per SITUATION_EVERY_S while she stays lost (AGEDASHII's ruling).
+                val last = situationAt
+                if (!spell || last == null || now - last >= SITUATION_EVERY_S) {
+                    names += situation
+                    situationAt = now
+                }
+                spell = true
+            }
             val last = fastAt
             if (over && !fast && (last == null || now - last >= SPEEDING_EVERY_S)) {
                 fastAt = now
