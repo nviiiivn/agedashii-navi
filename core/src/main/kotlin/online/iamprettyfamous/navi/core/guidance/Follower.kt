@@ -184,6 +184,10 @@ class Follower(
      * [Guidance.REPEAT_FRACTION] of where this maneuver was last announced is
      * marked said and not spoken: it would repeat what she has just heard,
      * only because her speed moved the bands. "now" always speaks.
+     *
+     * Nor is one spoken when "now" is under [Guidance.NOW_SOON_S] away at her
+     * speed - "now" will say it in a moment. And a "continue" is said once,
+     * whichever band first comes due: nothing about it needs a countdown.
      */
     /** The prompt due now for [man], and its band - or null. */
     private fun maybeSay(man: Maneuver, metres: Double?, speedMs: Double?): Pair<String, String>? {
@@ -198,9 +202,12 @@ class Follower(
                 said.add(index to other)
                 if (other == band) break
             }
+            val nowAt = points["now"] ?: 0.0
+            if (band != "now" && speedMs != null && speedMs > 0.0 && (metres - nowAt) / speedMs < Guidance.NOW_SOON_S) return null
             val before = saidAt[index]
             if (band != "now" && before != null && metres > before * Guidance.REPEAT_FRACTION) return null
             saidAt[index] = metres
+            if (man.kind == ManeuverKind.CONTINUE) Guidance.PROMPT_BANDS.forEach { (_, b) -> said.add(index to b) }
             return Guidance.spoken(man.instruction, man.street, metres, imperial, band) to band
         }
         return null

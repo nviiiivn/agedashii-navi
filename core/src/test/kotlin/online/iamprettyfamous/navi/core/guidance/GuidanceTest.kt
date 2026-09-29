@@ -169,6 +169,32 @@ class PromptsTest {
     }
 
     @Test
+    fun `a warning is not spoken when now is a moment away`() {
+        // minion 1's #4: right after a turn the next came up just outside "now";
+        // at 15 m/s "In 350 ft, turn left" then "Turn left" 1 s apart.
+        val turn = points[20]
+        fun short(m: Double) = LatLon(turn.lat - m / 111_320.0, turn.lon)
+        assertNull(follower.update(short(100.0), speedMs = 15.0, now = 0.0).say, "now is under a second away")
+        assertEquals("now", follower.update(short(88.0), speedMs = 15.0, now = 1.0).band)
+        val far = Follower(route, offrouteM = 45.0)
+        assertEquals("near", far.update(short(290.0), speedMs = 15.0, now = 0.0).band, "13 s out: still warned")
+    }
+
+    @Test
+    fun `a continue is said once`() {
+        val base = route
+        val cont = base.copy(maneuvers = listOf(
+            base.maneuvers[0],
+            Maneuver("Continue toward CA 24.", "Grove Shafter Freeway", 0.0, LatLon(0.0, 0.0), 20, base.cumM[20], kind = ManeuverKind.CONTINUE),
+            base.maneuvers[2],
+        ))
+        val f = Follower(cont, offrouteM = 45.0)
+        val said = points.take(21).mapIndexedNotNull { i, p -> f.update(p, speedMs = 15.0, now = i.toDouble()).say }
+            .filter { "CA 24" in it }
+        assertEquals(1, said.size, "said: $said")
+    }
+
+    @Test
     fun `slowing down still gets the nearer warning`() {
         val turn = points[20]
         fun short(m: Double) = LatLon(turn.lat - m / 111_320.0, turn.lon)
@@ -224,6 +250,15 @@ class WordingTest {
         assertTrue(near.startsWith("In "))
         assertEquals("turn left onto Grand Ave", now)
         assertEquals("continue", Guidance.spoken(null, null, 20.0, band = "now"))
+    }
+
+    @Test
+    fun `nothing goes after a sentence's full stop`() {
+        assertEquals(
+            "In 0.5 mi, Continue toward CA 24/Berkeley/Walnut Creek.",
+            Guidance.spoken("Continue toward CA 24/Berkeley/Walnut Creek.", "Grove Shafter Freeway", 800.0, band = "far"),
+        )
+        assertEquals("turn left onto Grand Ave", Guidance.spoken("turn left", "Grand Ave", 20.0, band = "now"))
     }
 
     @Test

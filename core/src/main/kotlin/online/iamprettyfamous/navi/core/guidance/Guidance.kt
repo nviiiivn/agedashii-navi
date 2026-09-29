@@ -49,6 +49,14 @@ object Guidance {
      */
     const val REPEAT_FRACTION = 0.6
 
+    /**
+     * A wider band is not spoken when the "now" point is less than this many
+     * seconds away at her speed: "now" is about to say it. Right after a turn
+     * the next one can come up just outside "now", and at 15 m/s "In 350 ft,
+     * turn left" then "Turn left" came 1 s apart (minion 1's rides, #4).
+     */
+    const val NOW_SOON_S = 3.0
+
     /** The graph's road classes, in index order. washi routing.py:116-119. */
     val ROAD_CLASSES: List<String> = listOf(
         "motorway", "motorway_link", "trunk", "trunk_link", "primary", "primary_link", "secondary",
@@ -178,7 +186,12 @@ object Guidance {
      */
     fun spoken(instruction: String?, street: String?, metres: Double?, imperial: Boolean = true, band: String = "near"): String {
         val what = if (instruction.isNullOrEmpty()) "continue" else instruction
-        val where = if (!street.isNullOrEmpty() && street !in what) " onto $street" else ""
+        // Valhalla's words are whole sentences: nothing goes after the full stop
+        // ("Continue toward CA 24/Berkeley. onto Grove Shafter Freeway", #9).
+        val sentence = what.trimEnd().let { it.endsWith(".") || it.endsWith("!") || it.endsWith("?") }
+        // Arrival has no "onto": "arrive at your destination onto Broadway" (guidance.py).
+        val arriving = "arrive" in what.lowercase() || "destination" in what.lowercase()
+        val where = if (!sentence && !arriving && !street.isNullOrEmpty() && street !in what) " onto $street" else ""
         if (band == "now") return "$what$where".trim()
         return "In ${distanceText(metres, imperial)}, $what$where".trim()
     }
