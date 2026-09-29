@@ -67,6 +67,7 @@ import online.iamprettyfamous.navi.places.PlacesStore
 import online.iamprettyfamous.navi.data.DataPack
 import online.iamprettyfamous.navi.ui.SearchGlyph
 import online.iamprettyfamous.navi.ui.WhereToPanel
+import online.iamprettyfamous.navi.ui.HelpPanel
 import online.iamprettyfamous.navi.ui.PinBand
 import online.iamprettyfamous.navi.ui.RouteStrip
 import androidx.compose.foundation.layout.Arrangement
@@ -230,6 +231,7 @@ class MainActivity : ComponentActivity() {
     private var destName by mutableStateOf<String?>(null)
 
     private var whereToOpen by mutableStateOf(false)
+    private var helpOpen by mutableStateOf(false)
 
     /** What setting the level last had to say, when it could not. */
     private var levelNote by mutableStateOf("")
@@ -283,9 +285,37 @@ class MainActivity : ComponentActivity() {
         if (armed != null && now - armed < STOP_CONFIRM_MS) {
             stopArmedAt = null
             RideService.stop(this)
+            // Stopped by hand: no automatic restart until the bike has stopped.
+            autoRecordHeld = true
         } else {
             // One glove-tap on the wrong button must not end a ride.
             stopArmedAt = now
+        }
+    }
+
+    // Record automatically: fixes in a row at rolling speed, and whether a
+    // recording she stopped by hand is holding it off until the bike stops.
+    private var rollingFixes = 0
+    private var stoppedSinceMs: Long? = null
+    private var autoRecordHeld = false
+
+    /** Every fix while the Ride screen is up: start a ride log once the bike is rolling. */
+    private fun autoRecord(fix: android.location.Location) {
+        if (!settings.autoRecord) return
+        val speed = if (fix.hasSpeed()) fix.speed else 0f
+        val now = SystemClock.elapsedRealtime()
+        if (speed < STOPPED_MS) {
+            rollingFixes = 0
+            val since = stoppedSinceMs ?: now.also { stoppedSinceMs = it }
+            if (now - since > 30_000) autoRecordHeld = false
+            return
+        }
+        stoppedSinceMs = null
+        rollingFixes = if (speed >= ROLLING_MS) rollingFixes + 1 else 0
+        if (rollingFixes >= 3 && !autoRecordHeld && !RideService.state.value.recording) {
+            Log.i("NaviRec", "recording automatically: rolling at %.1f m/s".format(speed))
+            rollingFixes = 0
+            startRecording()
         }
     }
 
@@ -418,7 +448,7 @@ class MainActivity : ComponentActivity() {
             }
         }
         // The map follows the same fixes the telemetry uses; there is one GPS listener.
-        LaunchedEffect(Unit) { Telemetry.fix.collect { it?.let(map::showFix) } }
+        LaunchedEffect(Unit) { Telemetry.fix.collect { it?.let { f -> map.showFix(f); autoRecord(f) } } }
         // The sun, once a minute: the phase changes over minutes, not seconds.
         LaunchedEffect(Unit) {
             while (true) {
@@ -468,7 +498,8 @@ class MainActivity : ComponentActivity() {
                 pin = null
             }
         }
-        BackHandler(enabled = settingsOpen) { settingsOpen = false }
+        BackHandler(enabled = settingsOpen && !helpOpen) { settingsOpen = false }
+        BackHandler(enabled = helpOpen) { helpOpen = false }
         BackHandler(enabled = !settingsOpen && pin != null && !whereToOpen) { cancelPin() }
         BackHandler(enabled = whereToOpen && !settingsOpen) { whereToOpen = false }
         val places by PlacesStore.state.collectAsState()
@@ -588,6 +619,7 @@ class MainActivity : ComponentActivity() {
                     onChanged = ::applySetting,
                     onClose = { settingsOpen = false },
                     level = level, levelNote = levelNote,
+                    onHelp = { helpOpen = true },
                     onLevel = { set ->
                         if (set) {
                             Telemetry.setLevel(this@MainActivity) { ok ->
@@ -600,6 +632,7 @@ class MainActivity : ComponentActivity() {
                     },
                 )
             }
+            if (helpOpen) HelpPanel(p) { helpOpen = false }
         }
     }
 
@@ -667,5 +700,8 @@ class MainActivity : ComponentActivity() {
         )
         const val STALE_FIX_S = 10.0
         const val STOP_CONFIRM_MS = 3000L
+        /** The Flet app's "the bike is rolling": faster than a parked GPS wanders (m/s, ~5.6 mph). */
+        const val ROLLING_MS = 2.5f
+        const val STOPPED_MS = 1.0f
     }
 }
