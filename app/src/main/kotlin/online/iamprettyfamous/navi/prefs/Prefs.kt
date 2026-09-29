@@ -53,6 +53,16 @@ class Prefs(context: Context) {
         get() = raw.getBoolean("voice_streets", false)
         set(v) = raw.edit().putBoolean("voice_streets", v).apply()
 
+    /** "Character lines": wild lines, flourishes and the cough. On by default; off is the plain recorded voice. */
+    var voiceCharacter: Boolean
+        get() = raw.getBoolean("voice_character", true)
+        set(v) = raw.edit().putBoolean("voice_character", v).apply()
+
+    /** A line, rarely, when she opens Where to or picks a place. Hers to turn on. */
+    var voiceTaps: Boolean
+        get() = raw.getBoolean("voice_taps", false)
+        set(v) = raw.edit().putBoolean("voice_taps", v).apply()
+
     var keepAwake: Boolean
         get() = raw.getBoolean("keep_awake", true)
         set(v) = raw.edit().putBoolean("keep_awake", v).apply()

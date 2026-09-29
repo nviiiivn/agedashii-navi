@@ -108,6 +108,8 @@ class MainActivity : ComponentActivity() {
             Changed.VOICE -> {
                 Voice.enabled = settings.voice
                 Voice.streets = settings.voiceStreets
+                Voice.character.on = settings.voiceCharacter
+                Voice.character.taps = settings.voiceTaps
             }
             Changed.MIC_ON -> micOn()
             Changed.MIC_OFF -> {
@@ -335,6 +337,8 @@ class MainActivity : ComponentActivity() {
         }
         Voice.enabled = settings.voice
         Voice.streets = settings.voiceStreets
+        Voice.character.on = settings.voiceCharacter
+        Voice.character.taps = settings.voiceTaps
         Voice.start(this)
         setContent { Ride() }
         // A ride Android cut off while the app was dead is found and reported here.
@@ -461,7 +465,7 @@ class MainActivity : ComponentActivity() {
                 RoundButton(if (rec.recording) "■" else "●", p, if (rec.recording) p.bad else p.accent) {
                     onRecordTap()
                 }
-                RoundButton(p, { whereToOpen = true }) { SearchGlyph(p.accent) }
+                RoundButton(p, { whereToOpen = true; Voice.tap("opened Where to") }) { SearchGlyph(p.accent) }
                 // Ending a route takes two taps, as stopping a recording does. Above
                 // follow, so follow is the one that comes and goes at the bottom.
                 if (nav.route != null) {
@@ -479,6 +483,7 @@ class MainActivity : ComponentActivity() {
                     onPick = { hit ->
                         offer(hit.at, hit.name, hit.detail)
                         whereToOpen = false
+                        Voice.tap("picked ${hit.name}")
                     },
                     onClose = { whereToOpen = false },
                 )

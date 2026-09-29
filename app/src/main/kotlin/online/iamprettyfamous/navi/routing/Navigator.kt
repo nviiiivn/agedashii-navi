@@ -141,7 +141,7 @@ object Navigator {
                     nav.copy(rerouteNote = "Re-route failed: ${line.reason.ifEmpty { "no route" }} - still on the old route")
                 }
                 // Said once per off-route spell; the gate's retries stay quiet.
-                if (!first && cues.refused()) Voice.play(VoiceLines.refusal(line.reason), "refused: ${line.reason}")
+                if (!first && cues.refused()) Voice.refusal(line.reason)
                 return
             }
             follower.setRoute(line)

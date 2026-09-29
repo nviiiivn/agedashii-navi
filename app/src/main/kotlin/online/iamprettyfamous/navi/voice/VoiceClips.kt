@@ -241,8 +241,11 @@ object VoiceClips {
 
     /** One line: whose voice is in, and what the phone still says. */
     fun statusText(context: Context): String {
-        val hers = imported(context).size
-        val have = have(context)
+        val all = have(context)
+        // Her character lines are counted apart: "45 clips" would hide which turns have none.
+        val have = all.filter(VoiceLines::isSlot).toSet()
+        val extra = all.size - have.size
+        val hers = imported(context).keys.count(VoiceLines::isSlot)
         val built = have.size - hers
         val who = when {
             have.isEmpty() -> "No recorded voice."
@@ -251,7 +254,8 @@ object VoiceClips {
             else -> "Your voice: $hers clip${if (hers == 1) "" else "s"}; built-in for $built more."
         }
         val phone = VoiceLines.FIXED.filter { it !in have && it != "roundabout" }
-        return who + if (phone.isNotEmpty()) " Phone voice for: ${few(phone)}." else ""
+        return who + (if (extra > 0) " Character: $extra line${if (extra == 1) "" else "s"}." else "") +
+            if (phone.isNotEmpty()) " Phone voice for: ${few(phone)}." else ""
     }
 
     /** One line for what an import just did. */

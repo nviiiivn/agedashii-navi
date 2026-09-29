@@ -35,6 +35,7 @@ import kotlinx.coroutines.withContext
 import online.iamprettyfamous.navi.core.dash.DashColours
 import online.iamprettyfamous.navi.core.theme.Role
 import online.iamprettyfamous.navi.core.theme.TypeScale
+import online.iamprettyfamous.navi.core.voice.Character
 import online.iamprettyfamous.navi.core.voice.VoiceLines
 import online.iamprettyfamous.navi.dash.ink
 import online.iamprettyfamous.navi.prefs.Prefs
@@ -110,18 +111,25 @@ fun VoicePanel(p: Palette, prefs: Prefs, rev: Int, onChanged: () -> Unit) {
         }
         if (said.isNotEmpty()) Line(said, p.ink(saidRole), TypeScale.SMALL_SP)
 
-        Line("Street names after your lines", p.text, TypeScale.MID_SP)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            for ((on, label) in listOf(false to "Off", true to "On")) {
-                val chosen = prefs.voiceStreets == on
-                WideButton(label, p, primary = chosen, Modifier.weight(1f)) {
-                    if (!chosen) {
-                        prefs.voiceStreets = on
-                        Voice.streets = on
-                        onChanged()
-                    }
-                }
-            }
+        Switch("Street names after your lines", prefs.voiceStreets, p) {
+            prefs.voiceStreets = it
+            Voice.streets = it
+            onChanged()
+        }
+        Switch("Character lines", prefs.voiceCharacter, p) {
+            prefs.voiceCharacter = it
+            Voice.character.on = it
+            onChanged()
+        }
+        Line(
+            "Wild lines in place of a turn's line, a shout after some prompts, the odd cough. " +
+                "Off: the plain recorded voice. The instruction always comes first.",
+            p.ink(Role.TEXT2), TypeScale.SMALL_SP,
+        )
+        Switch("A line when you tap Where to", prefs.voiceTaps, p) {
+            prefs.voiceTaps = it
+            Voice.character.taps = it
+            onChanged()
         }
 
         Line(
@@ -130,25 +138,75 @@ fun VoicePanel(p: Palette, prefs: Prefs, rev: Int, onChanged: () -> Unit) {
             p.ink(Role.TEXT2), TypeScale.SMALL_SP,
         )
         val distances = have.filter { VoiceLines.distanceFeet(it) != null }.sortedBy { VoiceLines.distanceFeet(it) }
+        val slots = Voice.character.slots(have)
+        val wild = have.groupBy { Character.wildSlot(it) }
         for (name in VoiceLines.FIXED + distances) {
-            val source = VoiceLines.source(name, have)
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Column(Modifier.weight(1f)) {
-                    Line(name, p.text, TypeScale.MID_SP, bold = true)
-                    Line(
-                        when {
-                            name in hers -> "yours"
-                            source == VoiceLines.Source.YOURS -> "built in"
-                            source == VoiceLines.Source.PHONE -> "phone voice: \"${VoiceLines.standIn(name, imperial)}\""
-                            else -> "silent - only ever a recorded line"
-                        },
-                        p.ink(Role.TEXT2), TypeScale.SMALL_SP,
-                    )
-                }
-                if (source != VoiceLines.Source.SILENT) {
-                    RoundButton("▶", p) { Voice.play(VoiceLines.preview(name, have, imperial), "preview $name", preview = true) }
-                }
+            val source = VoiceLines.source(name, slots)
+            val wilds = wild[name].orEmpty().size
+            val own = when {
+                name in hers -> "yours"
+                name in have -> "built in"
+                else -> null
             }
+            ClipRow(
+                name,
+                when {
+                    name in hers && wilds > 0 -> "yours (and $wilds wild, unused while yours is in)"
+                    wilds > 0 && Voice.character.on -> "$wilds wild line${if (wilds == 1) "" else "s"}, at random" + (own?.let { "; $it after" } ?: "")
+                    own != null -> own
+                    source == VoiceLines.Source.PHONE -> "phone voice: \"${VoiceLines.standIn(name, imperial)}\""
+                    else -> "silent - only ever a recorded line"
+                },
+                p,
+                playable = source != VoiceLines.Source.SILENT,
+            ) {
+                val choose = { slot: String -> Voice.character.voiceFor(slot, hers, have) }
+                Voice.play(VoiceLines.preview(name, slots, imperial, choose), "preview $name", preview = true)
+            }
+        }
+
+        // Her character: every mood, the cough and the numbers, with how many lines each has.
+        val extras = listOf(
+            "arrival" to "on arriving", "angry" to "after off route or re-routing", "urgent" to "after a far or near turn, now and then",
+            "scold" to "after speeding", "start" to "when a route starts", "sorry" to "after saying what went wrong", "ui" to "when you tap Where to",
+        )
+        for ((mood, whenSaid) in extras) {
+            val pool = have.filter { Character.mood(it) == mood }
+            if (pool.isEmpty()) continue
+            ClipRow("flourish-$mood", "${pool.size} line${if (pool.size == 1) "" else "s"}, $whenSaid", p, playable = true) {
+                Voice.play(listOf(VoiceLines.Item.Clip(pool.random(), null)), "preview flourish-$mood", preview = true)
+            }
+        }
+        val coughs = have.filter(Character::isCough)
+        if (coughs.isNotEmpty()) {
+            ClipRow("interject-cough", "${coughs.size}, rarely, between a distance and its turn", p, playable = true) {
+                Voice.play(listOf(VoiceLines.Item.Clip(coughs.random(), null)), "preview cough", preview = true)
+            }
+        }
+        val numbers = have.count(Character::isNumber)
+        if (numbers > 0) ClipRow("numbers", "$numbers kept for later - not played yet", p, playable = false) {}
+    }
+}
+
+@Composable
+private fun ClipRow(name: String, detail: String, p: Palette, playable: Boolean, onPlay: () -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(Modifier.weight(1f)) {
+            Line(name, p.text, TypeScale.MID_SP, bold = true)
+            Line(detail, p.ink(Role.TEXT2), TypeScale.SMALL_SP)
+        }
+        if (playable) RoundButton("▶", p, onClick = onPlay)
+    }
+}
+
+/** An Off/On pair of glove-sized buttons under a label. */
+@Composable
+private fun Switch(label: String, on: Boolean, p: Palette, set: (Boolean) -> Unit) {
+    Line(label, p.text, TypeScale.MID_SP)
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        for ((value, text) in listOf(false to "Off", true to "On")) {
+            val chosen = on == value
+            WideButton(text, p, primary = chosen, Modifier.weight(1f)) { if (!chosen) set(value) }
         }
     }
 }

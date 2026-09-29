@@ -81,7 +81,10 @@ object VoiceLines {
     fun canonical(name: String): String =
         DISTANCE.matchEntire(name)?.let { "dist-${it.groupValues[1]}${it.groupValues[2]}" } ?: name
 
-    fun isName(name: String): Boolean = name in FIXED || distanceFeet(name) != null
+    fun isName(name: String): Boolean = isSlot(name) || Character.isName(name)
+
+    /** A prompt's own name - a maneuver, a situation or a distance - that one of her clips can fill. */
+    fun isSlot(name: String): Boolean = name in FIXED || distanceFeet(name) != null
 
     /** dist-400ft -> 400, dist-0.5mile -> 2640, dist-quarter -> 1320; null for anything else or zero. */
     fun distanceFeet(name: String): Double? {
@@ -114,7 +117,8 @@ object VoiceLines {
 
     /** One thing to play: her clip (with the words it stands for), or words for the phone. */
     sealed interface Item {
-        data class Clip(val name: String, val fallback: String?) : Item
+        /** [soft]: a flourish or a cough, which any newer prompt cuts at once (Character). */
+        data class Clip(val name: String, val fallback: String?, val soft: Boolean = false) : Item
         data class Speak(val text: String) : Item
     }
 
@@ -151,6 +155,7 @@ object VoiceLines {
         imperial: Boolean,
         have: Set<String>,
         streets: Boolean = false,
+        choose: (String) -> String = { it },
     ): List<Item> {
         val distance = if (band == "now") null else metres
         val man = kind?.takeIf { it in ManeuverKind.MANEUVERS }
@@ -160,10 +165,10 @@ object VoiceLines {
         val items = ArrayList<Item>()
         if (distance != null && distance > 0.0) {
             val spoken = "In ${spokenDistance(distance, imperial)},"
-            items += if (distClip != null) Item.Clip(distClip, spoken) else Item.Speak(spoken)
+            items += if (distClip != null) Item.Clip(choose(distClip), spoken) else Item.Speak(spoken)
         }
         val verb = bare(instruction)
-        items += if (manClip != null) Item.Clip(manClip, verb) else Item.Speak(verb)
+        items += if (manClip != null) Item.Clip(choose(manClip), verb) else Item.Speak(verb)
         // Her line replaces the verb, so what only the words carry follows it in
         // the phone's voice: which exit off a roundabout, which side an exit is on.
         if (manClip != null) afterHerLine(man, instruction)?.let { items += Item.Speak(it) }
@@ -204,8 +209,8 @@ object VoiceLines {
     }
 
     /** A situation: her clip, else the phone's words, else nothing (speeding). */
-    fun situation(name: String, have: Set<String>): List<Item> {
-        if (name in have) return listOf(Item.Clip(name, SITUATIONS[name]))
+    fun situation(name: String, have: Set<String>, choose: (String) -> String = { it }): List<Item> {
+        if (name in have) return listOf(Item.Clip(choose(name), SITUATIONS[name]))
         return SITUATIONS[name]?.let { listOf(Item.Speak(it)) } ?: emptyList()
     }
 
@@ -227,9 +232,9 @@ object VoiceLines {
     }
 
     /** What the panel's play button plays: exactly what a ride would for that name. */
-    fun preview(name: String, have: Set<String>, imperial: Boolean = true): List<Item> {
+    fun preview(name: String, have: Set<String>, imperial: Boolean = true, choose: (String) -> String = { it }): List<Item> {
         val words = standIn(name, imperial)
-        if (name in have) return listOf(Item.Clip(name, words))
+        if (name in have) return listOf(Item.Clip(choose(name), words))
         return words?.let { listOf(Item.Speak(it)) } ?: emptyList()
     }
 
