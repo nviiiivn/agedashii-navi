@@ -454,7 +454,9 @@ class MainActivity : ComponentActivity() {
                 RoundButton(if (rec.recording) "■" else "●", p, if (rec.recording) p.bad else p.accent) {
                     onRecordTap()
                 }
-                RoundButton(p, { whereToOpen = true }) { SearchGlyph(p.accent) }
+                // Opens empty: it kept the last search, with the cursor at its
+                // start, so "ikea" typed after a ride became "ikeachabot space".
+                RoundButton(p, { PlacesStore.search("", null); whereToOpen = true }) { SearchGlyph(p.accent) }
                 // Ending a route takes two taps, as stopping a recording does. Above
                 // follow, so follow is the one that comes and goes at the bottom.
                 if (nav.route != null) {
