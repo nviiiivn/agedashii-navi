@@ -58,6 +58,10 @@ fun SettingsPanel(
     version: String,
     onChanged: (Changed) -> Unit,
     onClose: () -> Unit,
+    /** The level she set, and the last thing setting it had to say. */
+    level: online.iamprettyfamous.navi.core.telemetry.Zeroed = online.iamprettyfamous.navi.core.telemetry.Zeroed(false, 0.0, 0.0),
+    levelNote: String = "",
+    onLevel: (set: Boolean) -> Unit = {},
 ) {
     Box(Modifier.fillMaxSize().background(p.bg)) {
         Column(
@@ -121,9 +125,34 @@ fun SettingsPanel(
             Choice("Log rate", p, Prefs.HZ_CHOICES.map { "$it" to "$it / s" }, "${prefs.hz}") {
                 prefs.hz = it.toInt(); onChanged(Changed.TELEMETRY)
             }
-            Choice("Sensors", p, listOf("on" to "Only what gauges need", "off" to "All, always"),
-                onOff(prefs.sensorsOnDemand)) {
-                prefs.sensorsOnDemand = it == "on"; onChanged(Changed.TELEMETRY)
+            Choice("Motion sensors", p, listOf("on" to "On", "off" to "Off"), onOff(prefs.sensors)) {
+                prefs.sensors = it == "on"; onChanged(Changed.TELEMETRY)
+            }
+            // What Off costs, said where she makes the choice.
+            Text(
+                if (prefs.sensors) "Tilt, bumps, g peaks, the gyro, the compass and the barometer's climb come from these."
+                else "Off, and it stays off while recording: no tilt, no bumps or g peaks, no gyro, no compass, " +
+                    "no barometer climb. Lean and cornering g still come from the GPS alone.",
+                p, size = 12, faint = prefs.sensors,
+            )
+            if (prefs.sensors) {
+                Choice("Sensors", p, listOf("on" to "Only what gauges need", "off" to "All, always"),
+                    onOff(prefs.sensorsOnDemand)) {
+                    prefs.sensorsOnDemand = it == "on"; onChanged(Changed.TELEMETRY)
+                }
+                // Her mount is not level: call its angle "level" once, kept across rides.
+                Text("Level", p, size = 16)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Action("Set level here", p) { onLevel(true) }
+                    Action("Clear", p) { onLevel(false) }
+                }
+                Text(
+                    levelNote.ifEmpty {
+                        if (level.set) "Level set: roll %.1f°, pitch %.1f° - kept across rides".format(level.roll, level.pitch)
+                        else "The phone's own angles. Hold the bike upright and level, then Set level here."
+                    },
+                    p, size = 12, faint = true,
+                )
             }
 
             // Never remembered: she switches it on per ride (spec rule 5), and a
@@ -138,7 +167,11 @@ fun SettingsPanel(
             for (s in sensors) Text(sensorLine(s), p, size = 16, faint = s.hz == null)
             Text(micAccount(mic), p, size = 16, faint = !mic.on)
             Text(voiceAccount(voice, prefs.voice), p, size = 16, faint = !prefs.voice)
-            Text("Recording runs every sensor at 50 per second, whatever this says.", p, size = 12, faint = true)
+            Text(
+                if (prefs.sensors) "Recording runs every sensor at 50 per second, whatever this says."
+                else "The motion sensors are off, recording included.",
+                p, size = 12, faint = true,
+            )
 
             Heading("About", p)
             Text("Agedashii Navi $version", p, size = 16)
@@ -159,6 +192,7 @@ private fun gpsLine(ageS: Double?, accM: Double?, imperial: Boolean): String {
 
 private fun sensorLine(s: Telemetry.SensorLine): String = when {
     !s.present -> "${label(s.name)}: not on this phone"
+    s.offByHer -> "${label(s.name)}: off - you switched the motion sensors off"
     s.hz == null -> "${label(s.name)}: off - no gauge on screen needs it"
     s.lastSeenS == null -> "${label(s.name)}: on at ${s.hz} / s, nothing received yet"
     else -> "${label(s.name)}: on at ${s.hz} / s, last reading %.1f s ago".format(s.lastSeenS)
@@ -217,6 +251,21 @@ private fun Text(text: String, p: Palette, size: Int, bold: Boolean = false, fai
             fontWeight = if (bold) FontWeight.Bold else FontWeight.Normal,
         ),
     )
+}
+
+/** A button among the chips: 56 dp for gloves, the round buttons' ring. */
+@Composable
+private fun Action(label: String, p: Palette, onClick: () -> Unit) {
+    Box(
+        Modifier.heightIn(min = 56.dp)
+            .background(p.surface, RoundedCornerShape(10.dp))
+            .border(2.dp, p[DashColours.CONTROL_RING], RoundedCornerShape(10.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 18.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        BasicText(label, style = TextStyle(color = p.text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold))
+    }
 }
 
 /** A label and its choices as chips, 56 dp tall for gloves; the chosen one filled in accent. */

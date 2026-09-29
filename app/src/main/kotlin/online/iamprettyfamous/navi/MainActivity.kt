@@ -60,6 +60,7 @@ import online.iamprettyfamous.navi.ui.RoundButton
 import online.iamprettyfamous.navi.ui.Palette
 import online.iamprettyfamous.navi.ui.palette
 import online.iamprettyfamous.navi.routing.Navigator
+import online.iamprettyfamous.navi.routing.GuideService
 import online.iamprettyfamous.navi.voice.Voice
 import online.iamprettyfamous.navi.places.PlacesStore
 import online.iamprettyfamous.navi.data.DataPack
@@ -186,6 +187,9 @@ class MainActivity : ComponentActivity() {
 
     private var whereToOpen by mutableStateOf(false)
 
+    /** What setting the level last had to say, when it could not. */
+    private var levelNote by mutableStateOf("")
+
     private fun offer(at: LatLon, name: String?, about: String?) {
         pin = at
         pinName = name
@@ -193,9 +197,14 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun routeToPin(at: LatLon) {
-        destName = pinName
+        // The name becomes the destination's only once its route exists: set
+        // here, a refused Napa renamed the Chabot route still being followed
+        // ("Route ends at Skyline Boulevard, 300 ft from Napa").
+        pendingName = pinName
         Navigator.go(at, settings.imperial)
     }
+
+    private var pendingName: String? = null
 
     /** The same two-tap guard for ending a route. */
     private var endArmedAt by mutableStateOf<Long?>(null)
@@ -385,13 +394,26 @@ class MainActivity : ComponentActivity() {
         @Suppress("UNUSED_VARIABLE") val rev = settingsRev // a change in Settings redraws the ride screen
         val sensorLines by Telemetry.sensors.collectAsState()
         val micState by Telemetry.mic.collectAsState()
+        val level by Telemetry.level.collectAsState()
         val lastFix by Telemetry.fix.collectAsState()
         val nav by Navigator.nav.collectAsState()
         val voice by Voice.state.collectAsState()
         LaunchedEffect(nav.route) { map.showRoute(nav.route?.points) }
+        // A route holds the GPS the way a recording does, so guidance and the
+        // voice carry on with the screen locked.
+        val guiding = nav.route != null
+        LaunchedEffect(guiding, destName) {
+            if (guiding) GuideService.start(this@MainActivity, destName ?: "your pin")
+            else GuideService.stop(this@MainActivity)
+        }
         LaunchedEffect(nav.dest, pin) { map.showMarks(nav.dest, pin) }
         // Routed: the offered pin has become the destination.
-        LaunchedEffect(nav.dest, nav.route) { if (nav.route != null && nav.dest == pin) pin = null }
+        LaunchedEffect(nav.dest, nav.route) {
+            if (nav.route != null && nav.dest == pin) {
+                destName = pendingName
+                pin = null
+            }
+        }
         BackHandler(enabled = settingsOpen) { settingsOpen = false }
         BackHandler(enabled = !settingsOpen && pin != null && !whereToOpen) { cancelPin() }
         BackHandler(enabled = whereToOpen && !settingsOpen) { whereToOpen = false }
@@ -447,7 +469,8 @@ class MainActivity : ComponentActivity() {
                                 PinBand(at, nav, here, p, settings.imperial,
                                     onRoute = { routeToPin(at) },
                                     onCancel = ::cancelPin,
-                                    name = pinName, about = pinAbout)
+                                    name = pinName, about = pinAbout,
+                                    outside = map.covers(at) == false)
                             }
                         }
                     }
@@ -463,22 +486,31 @@ class MainActivity : ComponentActivity() {
                     // including why there is no rpm, rather than a blank that looks broken.
                     if (micState.on || micState.error.isNotEmpty()) Chip(micAccount(micState), p)
                     if (endArmedAt != null) Chip("Tap End again to end the route", p, edge = p.bad, ink = p.bad)
-                    message(problem, locationGranted, fixAge, dataPack)?.let { Chip(it, p) }
+                    message(problem, locationGranted, fixAge, dataPack,
+                        outside = lastFix?.let { map.covers(LatLon(it.latitude, it.longitude)) == false } == true)?.let { Chip(it, p) }
                 },
             ) {
                 RoundButton("☰", p) { settingsOpen = true }
                 RoundButton(if (rec.recording) "■" else "●", p, if (rec.recording) p.bad else p.accent) {
                     onRecordTap()
                 }
-                RoundButton(p, { whereToOpen = true; Voice.tap("opened Where to") }) { SearchGlyph(p.accent) }
-                // Ending a route takes two taps, as stopping a recording does. Above
-                // follow, so follow is the one that comes and goes at the bottom.
+                // Opens empty: it kept the last search, with the cursor at its
+                // start, so "ikea" typed after a ride became "ikeachabot space".
+                RoundButton(p, { PlacesStore.search("", null); whereToOpen = true; Voice.tap("opened Where to") }) { SearchGlyph(p.accent) }
+                // Follow: always here, lit while the map follows her, dark when
+                // she has panned away; one tap centres on the bike and follows.
+                // It used to appear only after a pan, so she never saw it
+                // ("the center on bike and follow bike ... i don't see that").
+                if (locationGranted) {
+                    RoundButton(p, { map.follow() }, lit = following) { FollowGlyph(if (following) p.bg else p.accent) }
+                }
+                // Ending a route takes two taps, as stopping a recording does. Last
+                // in the column: it comes and goes, and nothing below it moves.
                 if (nav.route != null) {
                     RoundButton(if (endArmedAt != null) "End?" else "End", p, if (endArmedAt != null) p.bad else p.ink(Role.TEXT2)) {
                         onEndTap()
                     }
                 }
-                if (locationGranted && !following) RoundButton(p, { map.follow() }) { FollowGlyph(p.accent) }
             }
 
             if (whereToOpen) {
@@ -491,6 +523,7 @@ class MainActivity : ComponentActivity() {
                         Voice.tap("picked ${hit.name}")
                     },
                     onClose = { whereToOpen = false },
+                    routable = { map.covers(it) != false },
                 )
             }
 
@@ -501,6 +534,17 @@ class MainActivity : ComponentActivity() {
                     version = runCatching { packageManager.getPackageInfo(packageName, 0).versionName }.getOrNull() ?: "",
                     onChanged = ::applySetting,
                     onClose = { settingsOpen = false },
+                    level = level, levelNote = levelNote,
+                    onLevel = { set ->
+                        if (set) {
+                            Telemetry.setLevel(this@MainActivity) { ok ->
+                                levelNote = if (ok) "" else "No accelerometer has reported yet - is Motion sensors on?"
+                            }
+                        } else {
+                            Telemetry.clearLevel(this@MainActivity)
+                            levelNote = ""
+                        }
+                    },
                 )
             }
         }
@@ -530,7 +574,7 @@ class MainActivity : ComponentActivity() {
     }
 
     /** One honest line about why the map or the bike is not where she expects. */
-    private fun message(problem: Problem?, granted: Boolean, fixAge: Double?, data: DataPack.State): String? = when {
+    private fun message(problem: Problem?, granted: Boolean, fixAge: Double?, data: DataPack.State, outside: Boolean): String? = when {
         data.busy -> "Unpacking the map for the first time: %,d of %,d MB".format(data.doneBytes / 1_000_000, data.totalBytes / 1_000_000)
         data.error.isNotEmpty() -> data.error
         problem == Problem.NO_TILES ->
@@ -544,6 +588,8 @@ class MainActivity : ComponentActivity() {
         !granted -> "Location is off for Navi — no bike on the map"
         !Telemetry.hasGps(this) -> "This phone reports no GPS receiver"
         fixAge == null -> "Waiting for GPS"
+        // The Flet app's own sentence (routing.START_OUTSIDE), so both apps say it alike.
+        outside -> "You are outside the offline map. Ride back into it, or find signal."
         fixAge > STALE_FIX_S -> "GPS lost ${fixAge.toInt()} s ago"
         else -> null
     }

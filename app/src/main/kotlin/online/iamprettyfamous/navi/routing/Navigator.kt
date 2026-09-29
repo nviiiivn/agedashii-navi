@@ -51,6 +51,11 @@ object Navigator {
     private val follower = Follower()
     private val gate = RerouteGate()
     private var here: LatLon? = null
+    // Her last speed, so a new route's first update picks the same prompt band
+    // the next fix will. Without it the first update used the crawl bands and
+    // the next fix the speed bands, and the same "In 600 ft, turn right" was
+    // said twice, 7 s apart, after every route and re-route (emulator ride).
+    private var speedMs: Double? = null
     private var imperial = true
     // Bumped by every new destination and by clear(), so an answer that
     // arrives for a destination she has since replaced is dropped.
@@ -108,9 +113,12 @@ object Navigator {
             val nav = _nav.value
             // A destination chosen before the first fix is routed on it.
             if (first && nav.asking != null) ask(p, nav.asking, generation, first = true)
+            // Her speed is kept even with no route yet, so the FIRST route of a
+            // ride, picked while moving, starts on the speed bands too.
+            val speed = if (fix.hasSpeed()) fix.speed.toDouble() else null
+            speedMs = speed
             if (follower.route == null) return
             val now = System.currentTimeMillis() / 1000.0
-            val speed = if (fix.hasSpeed()) fix.speed.toDouble() else null
             val status = follower.update(p, speed, now)
             val dest = nav.dest
             var rerouting = false
@@ -158,7 +166,7 @@ object Navigator {
             // asked-for location back even when the route ends elsewhere.
             val endStreet = line.maneuvers.lastOrNull { it.street.isNotBlank() }?.street
             val gap = Arrival.gap(dest, line.points.last(), endStreet)
-            val status = here?.let { follower.update(it, null, now) }
+            val status = here?.let { follower.update(it, speedMs, now) }
             Log.i(TAG, "following: ${line.maneuvers.size} turns, reroutes=$reroutes, gap=${gap?.metres?.toInt()} m")
             _nav.value = Nav(dest = dest, route = line, status = status, gap = gap, reroutes = reroutes)
             // The first update of a new route can already be inside a prompt band;
