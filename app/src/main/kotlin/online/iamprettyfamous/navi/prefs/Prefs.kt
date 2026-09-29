@@ -53,9 +53,33 @@ class Prefs(context: Context) {
         get() = raw.getBoolean("voice_streets", false)
         set(v) = raw.edit().putBoolean("voice_streets", v).apply()
 
+    /** Which way up: auto (follow the phone), landscape (always sideways), portrait (always upright). */
+    var orientation: String
+        get() = raw.getString("orientation", "auto") ?: "auto"
+        set(v) = put("orientation", v)
+
+    /** Metres from the line before "off route" (with three fixes in a row). The Flet app's choices. */
+    var offrouteM: Int
+        get() = raw.getInt("offroute_m", 45).coerceIn(30, 200)
+        set(v) = raw.edit().putInt("offroute_m", v).apply()
+
+    /**
+     * Follow the sun: Sunlight by day, Day in the golden hour, Night at dusk, Red
+     * night after dark, the screen dimmed to match - never stored as her theme.
+     * Off by default here: she is already riding with a theme she chose.
+     */
+    var autoTheme: Boolean
+        get() = raw.getBoolean("auto_theme", false)
+        set(v) = raw.edit().putBoolean("auto_theme", v).apply()
+
     var keepAwake: Boolean
         get() = raw.getBoolean("keep_awake", true)
         set(v) = raw.edit().putBoolean("keep_awake", v).apply()
+
+    /** Her master switch for the motion sensors. Off holds while recording too. */
+    var sensors: Boolean
+        get() = raw.getBoolean("sensors", true)
+        set(v) = raw.edit().putBoolean("sensors", v).apply()
 
     var sensorsOnDemand: Boolean
         get() = raw.getBoolean("sensors_on_demand", true)
@@ -90,5 +114,6 @@ class Prefs(context: Context) {
 
     companion object {
         val HZ_CHOICES = listOf(1, 2, 5, 10)
+        val OFFROUTE_CHOICES = listOf(30, 45, 75, 120)
     }
 }

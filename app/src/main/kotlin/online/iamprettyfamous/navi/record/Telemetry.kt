@@ -26,6 +26,7 @@ import online.iamprettyfamous.navi.core.rpm.ExhaustListener
 import online.iamprettyfamous.navi.core.telemetry.GpsClimb
 import online.iamprettyfamous.navi.core.telemetry.Live
 import online.iamprettyfamous.navi.core.telemetry.Motion
+import online.iamprettyfamous.navi.core.telemetry.Zeroed
 import online.iamprettyfamous.navi.core.telemetry.Ride
 import online.iamprettyfamous.navi.routing.Navigator
 import online.iamprettyfamous.navi.voice.Voice
@@ -97,7 +98,11 @@ object Telemetry {
     val rec: StateFlow<RecState> = _rec
 
     /** One line of Settings' honest account: is it on this phone, is it running, when did it last report. */
-    data class SensorLine(val name: String, val present: Boolean, val hz: Int?, val lastSeenS: Double?, val note: String?)
+    data class SensorLine(
+        val name: String, val present: Boolean, val hz: Int?, val lastSeenS: Double?, val note: String?,
+        /** Off because she switched the motion sensors off - not because nothing needs it. */
+        val offByHer: Boolean = false,
+    )
 
     private val _sensors = MutableStateFlow<List<SensorLine>>(emptyList())
     /** What each motion sensor is actually doing, refreshed once a second while telemetry runs. */
@@ -128,6 +133,47 @@ object Telemetry {
     private var ride = Ride(path = null)
     private var recording = false
     private var motion = Motion()
+    // The level she set ("Set level here"), kept in prefs and put back on every
+    // fresh Motion: a new recording starts a new one.
+    private var levelRoll = 0.0
+    private var levelPitch = 0.0
+
+    private fun freshMotion() = Motion().also { it.zeroAt(levelRoll, levelPitch) }
+
+    /** The level as she should see it: set (and at what angles), or the phone's own. */
+    private val _level = MutableStateFlow(Zeroed(false, 0.0, 0.0))
+    val level: StateFlow<Zeroed> = _level
+
+    /**
+     * Call the phone's angle right now "level" - she holds the bike upright
+     * first. Kept across rides. [done] gets false when no accelerometer has
+     * reported, so the screen says so instead of claiming a calibration.
+     */
+    fun setLevel(context: Context, done: (Boolean) -> Unit) {
+        val prefs = context.applicationContext.getSharedPreferences("navi", Context.MODE_PRIVATE)
+        ensureThread().post {
+            val got = motion.zero()
+            if (got != null) {
+                levelRoll = got.roll
+                levelPitch = got.pitch
+                prefs.edit().putFloat("level_roll", got.roll.toFloat()).putFloat("level_pitch", got.pitch.toFloat()).apply()
+                _level.value = got
+            }
+            Handler(android.os.Looper.getMainLooper()).post { done(got != null) }
+        }
+    }
+
+    /** Back to the phone's own angles. */
+    fun clearLevel(context: Context) {
+        val prefs = context.applicationContext.getSharedPreferences("navi", Context.MODE_PRIVATE)
+        prefs.edit().remove("level_roll").remove("level_pitch").apply()
+        ensureThread().post {
+            levelRoll = 0.0
+            levelPitch = 0.0
+            motion.unzero()
+            _level.value = Zeroed(false, 0.0, 0.0)
+        }
+    }
     private var gpsClimb = GpsClimb()
     private var machine = "cb750"
     private var imperial = true
@@ -140,6 +186,9 @@ object Telemetry {
     // now, as sensor type -> sampling period in microseconds.
     private var dashChannels: Set<String>? = null
     private var onDemand = true
+    // Her master switch. Off holds even while recording (AGEDASHII's ruling):
+    // the app does not quietly switch them back on because it knows better.
+    private var sensorsOn = true
     private val subscribed = HashMap<Int, Int>()
     private val lastEventBootS = HashMap<Int, Double>()
     private var tick = 0
@@ -182,13 +231,21 @@ object Telemetry {
         val metric = prefs.getString("units", "imperial") == "metric"
         val rate = prefs.getInt("hz", 1).coerceIn(1, 10)
         val demand = prefs.getBoolean("sensors_on_demand", true)
+        val on = prefs.getBoolean("sensors", true)
+        val roll = prefs.getFloat("level_roll", 0f).toDouble()
+        val pitch = prefs.getFloat("level_pitch", 0f).toDouble()
         val h = ensureThread()
         h.post {
+            levelRoll = roll
+            levelPitch = pitch
+            motion.zeroAt(roll, pitch)
+            _level.value = Zeroed(roll != 0.0 || pitch != 0.0, roll, pitch)
             if (m != machine) ear.setMachine(m)
             machine = m
             imperial = !metric
             hz = rate
             onDemand = demand
+            sensorsOn = on
             listen(h)
         }
     }
@@ -209,7 +266,7 @@ object Telemetry {
             // Fresh sensor state for a fresh log: a sensor the gauges did not need
             // was off, and its last reading may be minutes old. This also makes
             // the barometer's baseline the start of the ride.
-            motion = Motion()
+            motion = freshMotion()
             gpsClimb = GpsClimb()
             rideFirstMslM = null
             resubscribe()
@@ -256,11 +313,15 @@ object Telemetry {
         val metric = prefs.getString("units", "imperial") == "metric"
         val rate = prefs.getInt("hz", 1).coerceIn(1, 10)
         val demand = prefs.getBoolean("sensors_on_demand", true)
+        val on = prefs.getBoolean("sensors", true)
         ensureThread().post {
             if (m != machine) ear.setMachine(m)
             machine = m
             imperial = !metric
             onDemand = demand
+            // Switched off: the last lean and g must not stand on the gauges.
+            if (sensorsOn && !on) motion = freshMotion()
+            sensorsOn = on
             if (rate != hz) {
                 hz = rate
                 if (listening) regps()
@@ -296,6 +357,7 @@ object Telemetry {
                 hz = subscribed[s.type]?.let { 1_000_000 / it },
                 lastSeenS = lastEventBootS[s.type]?.let { nowBootS - it },
                 note = errors[s.name],
+                offByHer = !sensorsOn,
             )
         }
     }
@@ -493,6 +555,7 @@ object Telemetry {
 
     /** Which sensors should run now, and how fast. */
     private fun wanted(): Map<Int, Int> {
+        if (!sensorsOn) return emptyMap()
         val all = SENSORS.associate { it.type to SENSOR_PERIOD_US }
         // A recording logs every channel, and its peaks need 50 Hz. With the pref
         // off, or before the gauges have said what they read, run everything.

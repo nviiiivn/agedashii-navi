@@ -201,6 +201,16 @@ class Motion {
         return Zeroed(true, Py.round(zeroRoll, 1), Py.round(zeroPitch, 1))
     }
 
+    /**
+     * A level set on an earlier ride. Her mount does not move between rides, so
+     * the angle she called "level" is kept and put back on every fresh Motion
+     * rather than asked for again.
+     */
+    fun zeroAt(roll: Double, pitch: Double) {
+        zeroRoll = roll
+        zeroPitch = pitch
+    }
+
     fun unzero() {
         zeroRoll = 0.0
         zeroPitch = 0.0
