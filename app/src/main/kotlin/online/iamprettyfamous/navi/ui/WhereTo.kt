@@ -57,6 +57,8 @@ fun WhereToPanel(
     onQuery: (String) -> Unit,
     onPick: (PlacesStore.Hit) -> Unit,
     onClose: () -> Unit,
+    /** Whether a place is inside the map this phone can route on; the list reaches further. */
+    routable: (online.iamprettyfamous.navi.core.geo.LatLon) -> Boolean = { true },
 ) {
     val focus = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
@@ -107,6 +109,9 @@ fun WhereToPanel(
                         Line(hit.name, p.text, 18, FontWeight.Bold, maxLines = 2)
                         val far = hit.distM?.let { Guidance.distanceText(it, imperial) }
                         Line(listOfNotNull(hit.detail.ifEmpty { null }, far).joinToString(" · "), p.ink(Role.TEXT2), TypeScale.MID_SP)
+                        // Said before she taps, in the Flet app's words: the places
+                        // list covers 36.8-38.9 N, the map and router 37.15-38.15.
+                        if (!routable(hit.at)) Line("outside the map on this phone", p.warn, TypeScale.MID_SP, FontWeight.Bold)
                     }
                 }
             }
