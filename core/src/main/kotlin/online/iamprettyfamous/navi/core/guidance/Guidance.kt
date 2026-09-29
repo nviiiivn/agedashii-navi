@@ -57,6 +57,18 @@ object Guidance {
      */
     const val NOW_SOON_S = 3.0
 
+    /**
+     * "And then": the maneuver after this one is a surprise when it is closer
+     * than this many seconds at her speed - "now" (6 s) plus [NOW_SOON_S], so
+     * it cannot get a warning of its own - with [THEN_MIN_M] as the floor. At
+     * 30 mph about 120 m: 15% of maneuver pairs on 20 Bay routes (minion 1).
+     */
+    const val THEN_S = 9.0
+    const val THEN_MIN_M = 60.0
+
+    /** Never announced as "and then": the arrival is gentle, a continue or merge needs no warning. */
+    val THEN_NOT: Set<String> = setOf(ManeuverKind.ARRIVE, ManeuverKind.CONTINUE, ManeuverKind.MERGE)
+
     /** The graph's road classes, in index order. washi routing.py:116-119. */
     val ROAD_CLASSES: List<String> = listOf(
         "motorway", "motorway_link", "trunk", "trunk_link", "primary", "primary_link", "secondary",

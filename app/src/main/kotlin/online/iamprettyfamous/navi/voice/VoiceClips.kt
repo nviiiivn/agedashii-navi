@@ -253,7 +253,8 @@ object VoiceClips {
             built == 0 -> "Your voice: $hers clip${if (hers == 1) "" else "s"}."
             else -> "Your voice: $hers clip${if (hers == 1) "" else "s"}; built-in for $built more."
         }
-        val phone = VoiceLines.FIXED.filter { it !in have && it != "roundabout" }
+        // Only names the phone would actually say: speeding and open are hers or silent.
+        val phone = VoiceLines.FIXED.filter { it !in have && it != "roundabout" && VoiceLines.standIn(it) != null }
         return who + (if (extra > 0) " Character: $extra line${if (extra == 1) "" else "s"}." else "") +
             if (phone.isNotEmpty()) " Phone voice for: ${few(phone)}." else ""
     }

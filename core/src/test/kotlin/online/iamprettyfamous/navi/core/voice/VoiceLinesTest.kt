@@ -208,6 +208,32 @@ class VoiceLinesTest {
     }
 
     @Test
+    fun `and then - her link and the next maneuver as at its own now, all soft`() {
+        val mine = setOf("and-then", "turn-right", "exit")
+        assertEquals(
+            listOf(Item.Clip("and-then", "and then", soft = true), Item.Clip("turn-right", "Turn right", soft = true)),
+            VoiceLines.andThen("turn-right", "Turn right onto Main Street.", true, mine),
+        )
+        assertEquals(
+            listOf(Item.Clip("and-then", "and then", soft = true), Item.Clip("exit", "Take exit 5 on the right", soft = true), Item.Speak("on the right")),
+            VoiceLines.andThen("exit", "Take exit 5 on the right.", true, mine), "the side survives",
+        )
+        assertEquals(listOf(Item.Speak("and then"), Item.Speak("turn left")), VoiceLines.andThen("turn-left", "Turn left onto Grand.", true, emptySet()), "no clips: the phone, never the whole instruction")
+        assertEquals("and then", VoiceLines.standIn("and-then"))
+    }
+
+    @Test
+    fun `open - her line on launch, or nothing at all`() {
+        assertEquals("open", VoiceLines.parse("open.mp3").first)
+        assertTrue("open" in VoiceLines.FIXED)
+        assertNull(VoiceLines.standIn("open"), "no robot saying the app has opened")
+        assertEquals(emptyList(), VoiceLines.situation("open", have))
+        assertEquals(listOf(Item.Clip("open", null)), VoiceLines.situation("open", have + "open"))
+        assertEquals(VoiceLines.Source.SILENT, VoiceLines.source("open", have))
+        assertEquals("open", Character.wildSlot("wild-open-where-are-we"))
+    }
+
+    @Test
     fun `situations - hers, the phone's, or for speeding nothing`() {
         assertEquals(listOf(Item.Clip("offroute", "Off route.")), VoiceLines.situation("offroute", have))
         assertEquals(listOf(Item.Speak("Re-routing.")), VoiceLines.situation("rerouting", emptySet()))

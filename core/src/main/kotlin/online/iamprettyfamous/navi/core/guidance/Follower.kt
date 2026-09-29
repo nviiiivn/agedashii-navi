@@ -34,6 +34,8 @@ data class Status(
     val kind: String? = null,
     /** Which prompt [say] is: "far", "near" or "now" - "now" plays the maneuver clip alone. Null with no [say]. */
     val band: String? = null,
+    /** On a "now" prompt: the maneuver right after, when it is too close to be warned of on its own ("and then"). */
+    val then: Maneuver? = null,
 )
 
 /**
@@ -118,6 +120,7 @@ class Follower(
         // new state swallowed the only prompt saying she is there (guidance.py,
         // Flet v1.17.0).
         val due = if (!offRoute && man != null && !wasArrived) maybeSay(man, next.metres, speedMs) else null
+        val then = if (due?.second == "now" && man != null) thenAfter(route, man, speedMs) else null
         val instruction = man?.instruction ?: ""
         return Status(
             ok = true,
@@ -137,6 +140,7 @@ class Follower(
             say = due?.first,
             kind = man?.kind,
             band = due?.second,
+            then = then,
         ).also { last = it }
     }
 
@@ -169,6 +173,21 @@ class Follower(
             offSince = null
             badRun = 0
         }
+    }
+
+    /**
+     * The maneuver after [man] when it comes within [Guidance.THEN_S] at her
+     * speed (at least [Guidance.THEN_MIN_M]) and is one her voice can name -
+     * not an arrival, a continue or a merge. Null otherwise.
+     */
+    private fun thenAfter(route: RouteLine, man: Maneuver, speedMs: Double?): Maneuver? {
+        val at = route.maneuvers.indexOfFirst { it === man }
+        if (at < 0 || at + 1 >= route.maneuvers.size) return null
+        val next = route.maneuvers[at + 1]
+        val kind = next.kind ?: return null
+        if (kind !in ManeuverKind.MANEUVERS || kind in Guidance.THEN_NOT) return null
+        val limit = maxOf(Guidance.THEN_S * (speedMs ?: 0.0), Guidance.THEN_MIN_M)
+        return next.takeIf { it.cumM - man.cumM <= limit }
     }
 
     /**

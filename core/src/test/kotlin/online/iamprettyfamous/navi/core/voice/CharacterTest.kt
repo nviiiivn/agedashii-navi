@@ -230,26 +230,120 @@ class CharacterTest {
         c.on = false
         assertNull(c.flourish("now", "arrive", maneuver, emptyList(), pack))
         assertNull(c.sorry(pack))
-        val turn = listOf(Item.Clip("dist-0.1mile", "In 500 feet,"), Item.Clip("turn-left", "Turn left"))
-        assertEquals(turn, c.cough(turn, "near", 150.0, pack))
+        val core = core("turn-left", "near", ft(500.0), "Turn left", pack)
+        assertEquals(Character.Arranged(core.classic(), emptyList()), c.arrange(core, emptyList(), "near", "turn-left", maneuver, emptyList(), pack, emptySet()))
+    }
+
+    private fun ft(feet: Double) = feet / VoiceLines.FEET_PER_M
+    private fun core(kind: String, band: String, metres: Double?, words: String, have: Set<String>) =
+        VoiceLines.core(kind, band, metres, words, "", true, have)!!
+
+    // What the arrangement tests hear: no flourish lines unless a test adds them.
+    private val plain = setOf("dist-0.1mile", "turn-left", "exit", "continue", "interject-cough")
+    private val D = Item.Clip("dist-0.1mile", "In 500 feet,")
+    private val L = Item.Clip("turn-left", "Turn left")
+
+    @Test
+    fun `the maneuver may come first, the distance whole after it`() {
+        val first = Character(Dice(0.29, 0.99)).arrange(core("turn-left", "near", ft(500.0), "Turn left", plain), emptyList(), "near", "turn-left", Any(), emptyList(), plain, emptySet())
+        assertEquals(listOf(L, D), first.turn, "turn left, in 500 feet")
+        val classic = Character(Dice(0.3, 0.99)).arrange(core("turn-left", "near", ft(500.0), "Turn left", plain), emptyList(), "near", "turn-left", Any(), emptyList(), plain, emptySet())
+        assertEquals(listOf(D, L), classic.turn)
+        val now = Character(Dice(0.0, 0.0)).arrange(core("turn-left", "now", ft(20.0), "Turn left", plain), emptyList(), "now", "turn-left", Any(), emptyList(), plain, emptySet())
+        assertEquals(listOf(L), now.turn, "now: the maneuver alone, never rearranged, never a cough")
     }
 
     @Test
-    fun `the cough goes in the join between the distance and the turn, rarely, never twice running`() {
-        val turn = listOf(Item.Clip("dist-0.1mile", "In 500 feet,"), Item.Clip("turn-left", "Turn left"), Item.Speak("on the left"))
-        val c = Character(Dice(0.0, 0.0, 0.0))
-        val coughed = c.cough(turn, "near", 150.0, pack)
-        assertEquals(4, coughed.size)
-        assertEquals(turn[0], coughed[0])
-        assertTrue(Character.isCough((coughed[1] as Item.Clip).name) && (coughed[1] as Item.Clip).soft)
-        assertEquals(turn.drop(1), coughed.drop(2))
-        assertEquals(turn, c.cough(turn, "near", 150.0, pack), "not in the next prompt")
-        assertEquals(4, c.cough(turn, "far", 400.0, pack).size, "the one after may")
-        assertEquals(turn, Character(Dice()).cough(turn, "now", 20.0, pack), "never on now")
-        assertEquals(turn, Character(Dice()).cough(turn, "near", null, pack), "no distance, no join")
-        assertEquals(turn, Character(Dice(Character.COUGH_RATE)).cough(turn, "near", 150.0, pack), "rare")
-        val single = listOf(Item.Speak("In 500 ft, turn left"))
-        assertEquals(single, Character(Dice()).cough(single, "near", 150.0, pack), "one piece has no join")
+    fun `the tail and street stay glued to the maneuver when it moves`() {
+        val have = plain
+        val c = VoiceLines.core("exit", "near", ft(500.0), "Take exit 2 on the right", "", true, have)!!
+        val t = Character(Dice(0.1, 0.99)).arrange(c, emptyList(), "near", "exit", Any(), emptyList(), have, emptySet()).turn
+        assertEquals(listOf(Item.Clip("exit", "Take exit 2 on the right"), Item.Speak("on the right"), D), t)
+    }
+
+    @Test
+    fun `no two far or near prompts running have the same shape`() {
+        val c = Character(Dice(0.5, 0.99, 0.5, 0.99, 0.5, 0.99))
+        fun next() = c.arrange(core("turn-left", "near", ft(500.0), "Turn left", plain), emptyList(), "near", "turn-left", Any(), emptyList(), plain, emptySet()).turn
+        assertEquals(listOf(D, L), next())
+        assertEquals(listOf(L, D), next(), "classic again would repeat the shape: flipped")
+        assertEquals(listOf(D, L), next(), "and back")
+    }
+
+    @Test
+    fun `the cough goes inside the instruction - in the join, or between the maneuver's halves`() {
+        // prompt 1: classic, cough; prompt 2: classic, no roll for the cough (the one after); prompt 3: maneuver first, cough
+        val c = Character(Dice(0.5, 0.0, 0.5, 0.1, 0.0))
+        val C = Item.Clip("interject-cough", null, soft = true)
+        assertEquals(listOf(D, C, L), c.arrange(core("turn-left", "near", ft(500.0), "Turn left", plain), emptyList(), "near", "turn-left", Any(), emptyList(), plain, emptySet()).turn)
+        assertEquals(listOf(D, L), c.arrange(core("turn-left", "near", ft(500.0), "Turn left", plain), emptyList(), "near", "turn-left", Any(), emptyList(), plain, emptySet()).turn.filter { it != C }, "never two prompts running")
+        val halves = plain + "part-continue-a" + "part-continue-b"
+        val cont = core("continue", "far", ft(500.0), "Continue straight", halves)
+        val split = c.arrange(cont, emptyList(), "far", "continue", Any(), emptyList(), halves, emptySet()).turn
+        assertEquals(listOf(Item.Clip("part-continue-a", "Continue straight"), C, Item.Clip("part-continue-b", "Continue straight"), D), split, "continue - cough - straight, then the distance")
+        assertEquals(listOf(L), Character(Dice(0.0, 0.0)).arrange(core("turn-left", "now", null, "Turn left", plain), emptyList(), "now", "turn-left", Any(), emptyList(), plain, emptySet()).turn, "never on now")
+        assertEquals(listOf(D, L), Character(Dice(0.5, Character.COUGH_RATE)).arrange(core("turn-left", "near", ft(500.0), "Turn left", plain), emptyList(), "near", "turn-left", Any(), emptyList(), plain, emptySet()).turn, "rare")
+    }
+
+    @Test
+    fun `halves only for the plain line, and never her half with the built-in half`() {
+        val C = Item.Clip("interject-cough", null, soft = true)
+        val halves = plain + "part-continue-a" + "part-continue-b"
+        val mixed = Character(Dice(0.5, 0.0)).arrange(core("continue", "far", ft(500.0), "Continue", halves), emptyList(), "far", "continue", Any(), emptyList(), halves, setOf("part-continue-a")).turn
+        assertEquals(listOf(D, C, Item.Clip("continue", "Continue")), mixed, "her a with Arnold's b: the join instead")
+        val wild = halves + "wild-continue-go-on" + "wild-continue-onward"
+        val c = Character(Dice(0.5, 0.0))
+        val core = VoiceLines.core("continue", "far", ft(500.0), "Continue", "", true, c.slots(wild), choose = { c.voiceFor(it, emptySet(), wild, "far") })!!
+        val t = c.arrange(core, emptyList(), "far", "continue", Any(), emptyList(), wild, emptySet()).turn
+        assertEquals(C, t[1], "a wild take is never split: the cough takes the join")
+        assertTrue((t[2] as Item.Clip).name.startsWith("wild-continue-"))
+    }
+
+    @Test
+    fun `edges agreed with minion 3 - a prompt with no distance keeps the shape, any prompt without a cough clears it`() {
+        val C = Item.Clip("interject-cough", null, soft = true)
+        // shape: A classic; B far with no distance neither counts nor resets; C classic again is a repeat of A, so flipped
+        val s = Character(Dice(0.5, 0.99, 0.99, 0.5, 0.99))
+        fun near() = s.arrange(core("turn-left", "near", ft(500.0), "Turn left", plain), emptyList(), "near", "turn-left", Any(), emptyList(), plain, emptySet()).turn
+        assertEquals(listOf(D, L), near())
+        s.arrange(VoiceLines.core("turn-left", "far", null, "Turn left", null, true, plain), emptyList(), "far", "turn-left", Any(), emptyList(), plain, emptySet())
+        assertEquals(listOf(L, D), near(), "flipped: the prompt between had no distance")
+        // the cough: near coughs, the "now" after it has none, so the next near may cough again
+        val c = Character(Dice(0.5, 0.0, 0.5, 0.0))
+        assertEquals(listOf(D, C, L), c.arrange(core("turn-left", "near", ft(500.0), "Turn left", plain), emptyList(), "near", "turn-left", Any(), emptyList(), plain, emptySet()).turn)
+        c.arrange(core("turn-left", "now", null, "Turn left", plain), emptyList(), "now", "turn-left", Any(), emptyList(), plain, emptySet())
+        assertEquals(listOf(L, C, D), c.arrange(core("turn-left", "near", ft(500.0), "Turn left", plain), emptyList(), "near", "turn-left", Any(), emptyList(), plain, emptySet()).turn, "a repeat of the shape is flipped, and the cough comes along")
+    }
+
+    @Test
+    fun `two flourishes - never urgent on far, one at most on now`() {
+        val have = plain + setOf("flourish-urgent-do-it-now", "flourish-urgent-right-now", "flourish-angry-damn-it")
+        // order, (no cough: rolls high), F1 rate, F1 pick, F2 rate, F2 mood, F2 pick
+        val c = Character(Dice(0.5, 0.99, 0.0, 0.0, picks = listOf(0, 1, 0)))
+        val near = c.arrange(core("turn-left", "near", ft(500.0), "Turn left", have), emptyList(), "near", "turn-left", Any(), emptyList(), have, emptySet())
+        assertEquals(2, near.after.size, "DO IT NOW + DAMN IT")
+        assertEquals("urgent", Character.mood(near.after[0].name))
+        assertEquals("angry", Character.mood(near.after[1].name), "angry on a near turn, as a second line")
+        assertTrue(near.after.all { it.soft } && near.after[0].name != near.after[1].name)
+        val far = Character(Dice(0.5, 0.99, 0.0, 0.0)).arrange(core("turn-left", "far", ft(2000.0), "Turn left", have), emptyList(), "far", "turn-left", Any(), emptyList(), have, emptySet())
+        assertEquals(emptyList(), far.after, "far: no urgent, and angry only after off route or on a near turn")
+        val now = Character(Dice(0.0, 0.0, 0.0)).arrange(core("turn-left", "now", null, "Turn left", have), emptyList(), "now", "turn-left", Any(), emptyList(), have, emptySet())
+        assertEquals(1, now.after.size, "now: one at most")
+        assertEquals(1, Character(Dice(0.5, 0.99, 0.0, Character.P_SECOND)).arrange(core("turn-left", "near", ft(500.0), "Turn left", have), emptyList(), "near", "turn-left", Any(), emptyList(), have, emptySet()).after.size)
+    }
+
+    @Test
+    fun `an exit that says its side plays only on that side, and drops the phone's tail`() {
+        val have = plain + "exit-left"
+        val left = VoiceLines.core("exit", "now", null, "Take exit 2 on the left", "", true, have)!!
+        assertEquals(listOf(Item.Clip("exit-left", "Take exit 2 on the left")), left.classic())
+        val right = VoiceLines.core("exit", "now", null, "Take exit 2 on the right", "", true, have)!!
+        assertEquals(listOf(Item.Clip("exit", "Take exit 2 on the right"), Item.Speak("on the right")), right.classic(), "no exit-right: exit plus the side")
+        assertTrue("exit-left" in Character.DIRECTIONS, "a wild exit-left must be hers")
+        assertEquals("exit-left", VoiceLines.parse("exit-left.mp3").first)
+        assertEquals("continue", Character.partSlot("part-continue-a"))
+        assertEquals("turn-left", Character.partSlot("part-turn-left-b"))
+        assertNull(Character.partSlot("part-sideways-a"))
     }
 
     @Test

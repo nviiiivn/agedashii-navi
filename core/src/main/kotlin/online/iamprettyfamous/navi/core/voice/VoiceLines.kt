@@ -47,10 +47,18 @@ object VoiceLines {
      */
     val SITUATIONS: Map<String, String?> = linkedMapOf(
         "offroute" to "Off route.", "rerouting" to "Re-routing.", "start" to "Starting the route.", "speeding" to null,
+        // Her line when the app opens ("That's amazing, where are we?"): hers or
+        // nothing - a robot saying the app has opened is noise.
+        "open" to null,
+        // Before the maneuver right after this one, on this one's "now" (Follower's then).
+        "and-then" to "and then",
     )
 
     /** Every fixed name: the twelve maneuvers, then the situations. Distances are open-ended beside them. */
-    val FIXED: List<String> = ManeuverKind.MANEUVERS + SITUATIONS.keys
+    /** An exit line that says its side ("exit left, human"): played only for an exit on that side. */
+    val SIDE_SLOTS: List<String> = listOf("exit-left", "exit-right")
+
+    val FIXED: List<String> = ManeuverKind.MANEUVERS + SIDE_SLOTS + SITUATIONS.keys
 
     /** The two distances sent to her before the set was opened up; still accepted. */
     private val LEGACY_FEET = mapOf("dist-quarter" to 1320.0, "dist-half" to 2640.0)
@@ -156,24 +164,70 @@ object VoiceLines {
         have: Set<String>,
         streets: Boolean = false,
         choose: (String) -> String = { it },
-    ): List<Item> {
+    ): List<Item> = core(kind, band, metres, instruction, street, imperial, have, streets, choose)?.classic()
+        ?: listOf(Item.Speak(say))
+
+    /**
+     * One prompt's instruction as its pieces, for Character to arrange: the
+     * [distance] (far and near only), the [maneuver], and what is [glued] to it
+     * - the tail only the words carry (an exit's side, a roundabout's exit) and
+     * the street. [slot] is the clip name the maneuver was chosen for, before
+     * any wild line. Null: none of her clips applies, say our whole sentence.
+     */
+    /**
+     * "And then" and the maneuver right after this one, spoken at this one's
+     * "now": her link line (or the phone's "and then"), then the next
+     * maneuver as it would be said at its own "now" - maneuver and its tail
+     * (an exit's side, a roundabout's exit), never its distance or street.
+     * All of it soft: a newer prompt cuts it.
+     */
+    fun andThen(kind: String?, instruction: String?, imperial: Boolean, have: Set<String>, choose: (String) -> String = { it }): List<Item> {
+        val link = if ("and-then" in have) Item.Clip(choose("and-then"), "and then", soft = true) else Item.Speak("and then")
+        val next = core(kind, "now", null, instruction, null, imperial, have, false, choose)?.classic()
+            ?: listOfNotNull(kind?.let { standIn(it, imperial) }?.let { Item.Speak(it) }) +
+            listOfNotNull(afterHerLine(kind, instruction)?.let { Item.Speak(it) })
+        return listOf(link) + next.map { if (it is Item.Clip) it.copy(soft = true) else it }
+    }
+
+    data class Core(val distance: Item?, val maneuver: Item, val slot: String?, val glued: List<Item>) {
+        /** Distance, maneuver, tail: the order she has always heard. */
+        fun classic(): List<Item> = listOfNotNull(distance) + maneuver + glued
+    }
+
+    fun core(
+        kind: String?,
+        band: String?,
+        metres: Double?,
+        instruction: String?,
+        street: String?,
+        imperial: Boolean,
+        have: Set<String>,
+        streets: Boolean = false,
+        choose: (String) -> String = { it },
+    ): Core? {
         val distance = if (band == "now") null else metres
         val man = kind?.takeIf { it in ManeuverKind.MANEUVERS }
-        val manClip = man?.takeIf { it in have }
+        // An exit line that says its own side takes the place of "exit" plus
+        // the phone's "on the left" - only on an exit on that side.
+        val side = if (man == ManeuverKind.EXIT) SIDE.find(instruction.orEmpty().lowercase())?.let { "exit-${it.groupValues[1]}" } else null
+        val sided = side?.takeIf { it in have }
+        val manClip = sided ?: man?.takeIf { it in have }
         val distClip = nearestDistance(distance, have)
-        if (manClip == null && distClip == null) return listOf(Item.Speak(say))
-        val items = ArrayList<Item>()
-        if (distance != null && distance > 0.0) {
+        if (manClip == null && distClip == null) return null
+        val d = if (distance != null && distance > 0.0) {
             val spoken = "In ${spokenDistance(distance, imperial)},"
-            items += if (distClip != null) Item.Clip(choose(distClip), spoken) else Item.Speak(spoken)
+            if (distClip != null) Item.Clip(choose(distClip), spoken) else Item.Speak(spoken)
+        } else {
+            null
         }
         val verb = bare(instruction)
-        items += if (manClip != null) Item.Clip(choose(manClip), verb) else Item.Speak(verb)
+        val m = if (manClip != null) Item.Clip(choose(manClip), verb) else Item.Speak(verb)
+        val glued = ArrayList<Item>()
         // Her line replaces the verb, so what only the words carry follows it in
         // the phone's voice: which exit off a roundabout, which side an exit is on.
-        if (manClip != null) afterHerLine(man, instruction)?.let { items += Item.Speak(it) }
-        if (streets && !street.isNullOrBlank() && man != ManeuverKind.ARRIVE) items += Item.Speak("onto $street")
-        return items
+        if (manClip != null && sided == null) afterHerLine(man, instruction)?.let { glued += Item.Speak(it) }
+        if (streets && !street.isNullOrBlank() && man != ManeuverKind.ARRIVE) glued += Item.Speak("onto $street")
+        return Core(d, m, manClip, glued)
     }
 
     private val EXIT_NUMBER = Regex("""\btake the (\w+) exit\b""")
@@ -222,6 +276,7 @@ object VoiceLines {
         ManeuverKind.UTURN to "make a U-turn", ManeuverKind.CONTINUE to "continue straight",
         ManeuverKind.MERGE to "merge", ManeuverKind.EXIT to "take the exit",
         ManeuverKind.ARRIVE to "arrive at your destination", ManeuverKind.ROUNDABOUT to "enter the roundabout",
+        "exit-left" to "take the exit on the left", "exit-right" to "take the exit on the right",
     )
 
     /** The phone's words for [name] when she has no clip, or null (speeding). */

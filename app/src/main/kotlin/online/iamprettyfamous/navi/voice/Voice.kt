@@ -266,21 +266,31 @@ object Voice {
         val slots = character.slots(have, hers)
         val choose = { slot: String -> character.voiceFor(slot, hers, have, status.band) }
         val lines = cues.flatMap { VoiceLines.situation(it, slots, choose) }
-        val turn = say?.let {
-            val parts = VoiceLines.playlist(it, status.kind, status.band, status.turnInM, status.instruction, status.street, imperial, slots, streets, choose)
-            character.cough(parts, status.band, status.turnInM, have)
-        } ?: emptyList()
-        // At most one, and LAST: after the instruction, its tail and any situation line.
-        val extra = character.flourish(
-            status.band, status.kind, if (say != null) status.maneuver else null, cues, have,
+        val core = say?.let {
+            VoiceLines.core(status.kind, status.band, status.turnInM, status.instruction, status.street, imperial, slots, streets, choose)
+        }
+        val whole = if (say != null && core == null) listOf(Item.Speak(say)) else emptyList()
+        // The maneuver right after, too close for a warning of its own: "and then turn left".
+        val then = status.then?.takeIf { say != null && status.band == "now" }
+        val andThen = then?.let { VoiceLines.andThen(it.kind, it.instruction, imperial, slots, choose) } ?: emptyList()
+        // Her character arranges the instruction's pieces and adds up to two
+        // flourishes, always after it; the distance and direction stay whole.
+        val arranged = character.arrange(
+            core, whole, status.band, status.kind, if (say != null) status.maneuver else null, cues, have, hers,
             now = SystemClock.elapsedRealtime() / 1000.0,
+            flourishes = andThen.isEmpty(),
         )
         // The turn she is at plays FIRST and cuts in at once; anything else
         // waits for the word being said to finish (the Flet app's rule).
         val now = status.band == "now"
+        val turn = arranged.turn + andThen
         play(
-            (if (now) turn + lines else lines + turn) + listOfNotNull(extra),
-            listOfNotNull(cues.joinToString(", ").ifEmpty { null }, say, extra?.name).joinToString(" | "),
+            (if (now) turn + lines else lines + turn) + arranged.after,
+            listOfNotNull(
+                cues.joinToString(", ").ifEmpty { null }, say,
+                turn.joinToString(" ") { (it as? Item.Clip)?.name ?: "~" }.takeIf { turn.isNotEmpty() },
+                arranged.after.joinToString(" + ") { it.name }.ifEmpty { null },
+            ).joinToString(" | "),
             urgent = now,
         )
     }
@@ -292,6 +302,22 @@ object Voice {
     fun refusal(reason: String) {
         val sorry = if (_state.value.ready) character.sorry(clipNames()) else null
         play(VoiceLines.refusal(reason) + listOfNotNull(sorry), "refused: $reason${sorry?.let { " | ${it.name}" } ?: ""}")
+    }
+
+    @Volatile private var opened = false
+
+    /**
+     * Her line when the app opens, once per process (a cold launch, not a
+     * rotation or a return from Settings): her "open", else a wild one with
+     * Character lines on, else the built-in, else nothing. Never over a prompt.
+     */
+    fun opening() {
+        if (opened) return
+        opened = true
+        val have = clipNames()
+        val hers = herNames()
+        val items = VoiceLines.situation("open", character.slots(have, hers)) { character.voiceFor(it, hers, have) }
+        if (items.isNotEmpty()) play(items, "open", idleOnly = true)
     }
 
     /** A tap outside the ride's controls (opening Where to, picking a place): rarely a line, never over a prompt. */

@@ -169,6 +169,30 @@ class PromptsTest {
     }
 
     @Test
+    fun `and then - the next maneuver, when it is too close to be warned of on its own`() {
+        val base = straightRoute(points)
+        fun m(at: Int, kind: String?, words: String) = Maneuver(words, "", 0.0, LatLon(0.0, 0.0), at, base.cumM[at], kind = kind)
+        val head = m(0, null, "head north")
+        val arrive = m(40, ManeuverKind.ARRIVE, "arrive at your destination")
+        fun ride(vararg mans: Maneuver, speed: Double?): List<Status> {
+            val f = Follower(base.copy(maneuvers = listOf(head) + mans + arrive), offrouteM = 45.0)
+            return points.take(22).mapIndexed { i, p -> f.update(p, speedMs = speed, now = i.toDouble()) }.filter { it.say != null }
+        }
+        // turn left, then turn right 56 m on: at 15 m/s the limit is 135 m
+        val close = ride(m(20, ManeuverKind.TURN_LEFT, "turn left"), m(21, ManeuverKind.TURN_RIGHT, "turn right"), speed = 15.0)
+        val nowLeft = close.first { it.band == "now" && it.kind == ManeuverKind.TURN_LEFT }
+        assertEquals(ManeuverKind.TURN_RIGHT, nowLeft.then?.kind)
+        assertTrue(close.filter { it.band != "now" }.all { it.then == null }, "only on the now prompt")
+        // 111 m on: too far at a crawl (60 m floor), close enough at 15 m/s
+        val gap = listOf(m(20, ManeuverKind.TURN_LEFT, "turn left"), m(22, ManeuverKind.TURN_RIGHT, "turn right"))
+        assertNull(ride(*gap.toTypedArray(), speed = null).first { it.band == "now" }.then)
+        assertEquals(ManeuverKind.TURN_RIGHT, ride(*gap.toTypedArray(), speed = 15.0).first { it.band == "now" }.then?.kind)
+        // never an arrival, a continue or a merge
+        val cont = ride(m(20, ManeuverKind.TURN_LEFT, "turn left"), m(21, ManeuverKind.CONTINUE, "continue"), speed = 15.0)
+        assertNull(cont.first { it.band == "now" }.then)
+    }
+
+    @Test
     fun `a warning is not spoken when now is a moment away`() {
         // minion 1's #4: right after a turn the next came up just outside "now";
         // at 15 m/s "In 350 ft, turn left" then "Turn left" 1 s apart.
