@@ -52,9 +52,8 @@ class Character(private val random: Random = Random.Default) {
     /** Her switch for a line when she taps Where to or picks a place. On: she asked for it by name. */
     @Volatile var taps = true
 
-    private var lastFlourish: String? = null
-    private val lastWild = HashMap<String, String>()
-    private var lastCough: String? = null
+    // Each pool's recent picks: a wild slot, a mood, the cough (see [fresh]).
+    private val recent = HashMap<String, ArrayDeque<String>>()
     private var coughedLast = false
     private val given = ArrayDeque<Any>()
     private var angryAt: Double? = null
@@ -84,7 +83,7 @@ class Character(private val random: Random = Random.Default) {
         // One wild line alone takes turns with the built-in one, so it is still
         // never the same twice running (minion 3's Flet rule).
         val pool = if (wild.size == 1 && slot in have) wild + slot else wild
-        return fresh(pool, lastWild[slot]).also { lastWild[slot] = it }
+        return fresh(pool, "wild:$slot")
     }
 
     /**
@@ -171,10 +170,9 @@ class Character(private val random: Random = Random.Default) {
         val cough = if (where != NONE && !blocked) cough(have) else null
         coughedLast = cough != null
         val coughAt = if (cough != null) where else NONE
-        val before = lastFlourish
         // A "now" that carries "and then" stays short: no flourish on it.
         val f1 = if (flourishes) flourish(band, kind, maneuver, cues, have, now) else null
-        val f2 = if (f1 != null && wide) second(f1, before, band, kind, maneuver, cues, have, now) else null
+        val f2 = if (f1 != null && wide) second(f1, band, kind, maneuver, cues, have, now) else null
         val after = listOfNotNull(f1, f2)
         // The shape counts only far/near prompts with a distance to arrange.
         if (shaped && core!!.distance != null) {
@@ -220,8 +218,7 @@ class Character(private val random: Random = Random.Default) {
     private fun cough(have: Set<String>): Item.Clip? {
         val pool = have.filter(::isCough).sorted()
         if (pool.isEmpty() || random.nextDouble() >= COUGH_RATE) return null
-        val pick = fresh(pool, lastCough)
-        lastCough = pick
+        val pick = fresh(pool, "cough")
         return Item.Clip(pick, null, soft = true)
     }
 
@@ -229,11 +226,10 @@ class Character(private val random: Random = Random.Default) {
      * A second flourish after [first], [P_SECOND] of the time: a mood picked
      * evenly among those this moment allows (angry after off route or on a
      * near turn - under the minute - scold when speeding, start at a start,
-     * urgent on near) that still has a line other than [first], then a line -
-     * never [first], and not [before] (the flourish heard before it) when
-     * there is a choice.
+     * urgent on near) that still has a line other than [first], then a line
+     * from that mood's pool - never [first], whatever the pool's memory says.
      */
-    private fun second(first: Item.Clip, before: String?, band: String?, kind: String?, maneuver: Any?, cues: List<String>, have: Set<String>, now: Double): Item.Clip? {
+    private fun second(first: Item.Clip, band: String?, kind: String?, maneuver: Any?, cues: List<String>, have: Set<String>, now: Double): Item.Clip? {
         if (kind == ManeuverKind.ARRIVE || random.nextDouble() >= P_SECOND) return null
         val angryOk = angryAt.let { it == null || now - it >= ANGRY_EVERY_S }
         val moods = LinkedHashSet<String>()
@@ -247,23 +243,34 @@ class Character(private val random: Random = Random.Default) {
         val open = moods.filter { m -> have.any { mood(it) == m && it != first.name } }
         if (open.isEmpty()) return null
         val mood = open[random.nextInt(open.size)]
-        val pick = fresh(have.filter { mood(it) == mood && it != first.name }.sorted(), before)
-        lastFlourish = pick
+        val pick = fresh(have.filter { mood(it) == mood }.sorted(), "mood:$mood", never = first.name)
         return Item.Clip(pick, null, soft = true)
     }
 
     private fun line(mood: String, have: Set<String>): Item.Clip? {
         val pool = have.filter { mood(it) == mood }.sorted()
         if (pool.isEmpty() || random.nextDouble() >= RATE.getValue(mood)) return null
-        val pick = fresh(pool, lastFlourish)
-        lastFlourish = pick
+        val pick = fresh(pool, "mood:$mood")
         return Item.Clip(pick, null, soft = true)
     }
 
-    /** A uniform pick that is not [last], unless it is the only one. */
-    private fun fresh(pool: List<String>, last: String?): String {
-        val from = if (pool.size > 1) pool.filter { it != last } else pool
-        return from[random.nextInt(from.size)]
+    /**
+     * A uniform pick from [pool] (key [key]) avoiding its last k picks, k =
+     * min([REMEMBERED], n/2) for n lines - 2 lines: the last one, as before; 4:
+     * the last two; 8 or more: the last four. Hers: "there's so many options
+     * for funny things" - a small pool cycling forever was all she heard.
+     * [never] is left out whatever the memory says (a second flourish never
+     * repeats the first). With nothing left, the least recent is allowed.
+     */
+    private fun fresh(pool: List<String>, key: String, never: String? = null): String {
+        val seen = recent.getOrPut(key) { ArrayDeque() }
+        val k = minOf(REMEMBERED, pool.size / 2)
+        val avoid = seen.takeLast(k).toSet()
+        val from = pool.filter { it !in avoid && it != never }.ifEmpty { pool.filter { it != never } }.ifEmpty { pool }
+        val pick = from[random.nextInt(from.size)]
+        seen.addLast(pick)
+        while (seen.size > REMEMBERED) seen.removeFirst()
+        return pick
     }
 
     companion object {
@@ -301,6 +308,9 @@ class Character(private val random: Random = Random.Default) {
         const val NONE = 0
         const val JOIN = 1
         const val INSIDE = 2
+
+        /** The most picks a pool remembers so as not to repeat them. */
+        const val REMEMBERED = 4
 
         /** Maneuvers remembered as having had their flourish. */
         private const val REMEMBER = 32

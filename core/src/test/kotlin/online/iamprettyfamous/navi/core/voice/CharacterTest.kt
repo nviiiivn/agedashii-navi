@@ -106,6 +106,25 @@ class CharacterTest {
     }
 
     @Test
+    fun `a pool avoids its last few picks - min(4, n over 2) - so a big pool never loops`() {
+        // AGEDASHII's ruling on her "there's so many options for funny things"
+        val eight = (1..8).map { "wild-offroute-line-$it" }.toSet() + "offroute"
+        val c = Character(Dice())
+        val heard = (1..20).map { c.voiceFor("offroute", emptySet(), eight, null) }
+        heard.windowed(5).forEach { assertEquals(5, it.toSet().size, "any five running are all different: $it") }
+        val four = setOf("flourish-urgent-a", "flourish-urgent-b", "flourish-urgent-c", "flourish-urgent-d")
+        val u = Character(Dice())
+        val lines = (1..12).map { u.flourish("near", "turn-left", Any(), emptyList(), four)!!.name }
+        lines.windowed(3).forEach { assertEquals(3, it.toSet().size, "four lines: the last two are avoided: $it") }
+        // memory is per pool: an urgent line does not use up a scold line
+        val both = four + "flourish-scold-x"
+        val m = Character(Dice())
+        m.flourish("near", "turn-left", Any(), emptyList(), both)
+        assertEquals("flourish-scold-x", m.flourish("far", null, null, listOf("speeding"), both)!!.name)
+        assertEquals("flourish-scold-x", m.flourish("far", null, null, listOf("speeding"), both, now = 100.0)!!.name, "a pool of one repeats")
+    }
+
+    @Test
     fun `the chain - hers, then a wild one never twice running, then the built-in`() {
         val have = setOf("offroute", "wild-offroute-a", "wild-offroute-b")
         val c = Character(Dice(picks = listOf(0, 0, 0)))
