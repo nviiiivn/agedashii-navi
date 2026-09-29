@@ -62,6 +62,7 @@ fun SettingsPanel(
     level: online.iamprettyfamous.navi.core.telemetry.Zeroed = online.iamprettyfamous.navi.core.telemetry.Zeroed(false, 0.0, 0.0),
     levelNote: String = "",
     onLevel: (set: Boolean) -> Unit = {},
+    onHelp: () -> Unit = {},
 ) {
     Box(Modifier.fillMaxSize().background(p.bg)) {
         Column(
@@ -99,6 +100,13 @@ fun SettingsPanel(
             Choice("Motorcycle", p, Bikes.names(), prefs.machine) {
                 prefs.machine = it; onChanged(Changed.TELEMETRY)
             }
+            // The Flet app's line: what the rev counter assumes about this engine.
+            val ratio = Bikes.firingRatio(prefs.machine)
+            val (lowHz, highHz) = Bikes.bandHz(prefs.machine)
+            Text(Bikes.profile(prefs.machine).detail + " — " +
+                "fires %.0fx per revolution, so RPM = Hz x %.0f, and the exhaust is searched between %.0f and %.0f Hz. "
+                    .format(ratio, 60 / ratio, lowHz, highHz) +
+                "Get this wrong and every RPM reading is out by a fixed factor.", p, size = 12, faint = true)
             Choice("Map", p, listOf("off" to "Turns with me", "on" to "North up"), onOff(prefs.northUp)) {
                 prefs.northUp = it == "on"; onChanged(Changed.NORTH_UP)
             }
@@ -142,6 +150,11 @@ fun SettingsPanel(
                 "mount stays sideways through a hard left.", p, size = 12, faint = true)
 
             Heading("Recording", p)
+            Choice("Record automatically", p, OFF_ON, onOff(prefs.autoRecord)) {
+                prefs.autoRecord = it == "on"; onChanged(Changed.TELEMETRY)
+            }
+            Text("Starts a ride log once the bike is rolling (over about 6 mph for three fixes). " +
+                "A ride you stop by hand is not restarted until the bike has stopped.", p, size = 12, faint = true)
             Choice("Log rate", p, Prefs.HZ_CHOICES.map { "$it" to "$it / s" }, "${prefs.hz}") {
                 prefs.hz = it.toInt(); onChanged(Changed.TELEMETRY)
             }
@@ -194,6 +207,7 @@ fun SettingsPanel(
             )
 
             Heading("About", p)
+            Action("How this works", p) { onHelp() }
             Text("Agedashii Navi $version", p, size = 16)
             for (line in CREDITS) Text(line, p, size = 12, faint = true)
         }

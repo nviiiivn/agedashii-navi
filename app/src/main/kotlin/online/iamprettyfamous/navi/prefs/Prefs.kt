@@ -82,6 +82,11 @@ class Prefs(context: Context) {
         get() = raw.getBoolean("auto_theme", false)
         set(v) = raw.edit().putBoolean("auto_theme", v).apply()
 
+    /** Start a ride log as soon as the bike is rolling (the Flet app's switch). */
+    var autoRecord: Boolean
+        get() = raw.getBoolean("autorecord", false)
+        set(v) = raw.edit().putBoolean("autorecord", v).apply()
+
     var keepAwake: Boolean
         get() = raw.getBoolean("keep_awake", true)
         set(v) = raw.edit().putBoolean("keep_awake", v).apply()
