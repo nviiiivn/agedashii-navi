@@ -76,10 +76,11 @@ class Prefs(context: Context) {
     /**
      * Follow the sun: Sunlight by day, Day in the golden hour, Night at dusk, Red
      * night after dark, the screen dimmed to match - never stored as her theme.
-     * Off by default here: she is already riding with a theme she chose.
+     * On by default, as in the Flet app (AGEDASHII's ruling): picking a theme by
+     * hand turns it off, so she is never kept in a theme she did not choose.
      */
     var autoTheme: Boolean
-        get() = raw.getBoolean("auto_theme", false)
+        get() = raw.getBoolean("auto_theme", true)
         set(v) = raw.edit().putBoolean("auto_theme", v).apply()
 
     /** Start a ride log as soon as the bike is rolling (the Flet app's switch). */
