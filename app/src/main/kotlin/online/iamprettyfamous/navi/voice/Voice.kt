@@ -395,6 +395,7 @@ object Voice {
             mp.prepare()
             mp.start()
             player = mp
+            if (item.soft) character.heard(item.name, SystemClock.elapsedRealtime() / 1000.0)
             Log.d(TAG, "$id.$at clip ${item.name} (${if (source is VoiceClips.Source.Imported) "hers" else "built in"})")
         } catch (e: Exception) {
             mp.release()

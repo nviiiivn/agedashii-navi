@@ -59,8 +59,11 @@ class Character(private val random: Random = Random.Default) {
     fun voiceFor(slot: String, hers: Set<String>, have: Set<String>, band: String? = null): String {
         if (slot in hers || !on) return slot
         if (slot == ManeuverKind.ARRIVE && band != null && band != "now") return slot
-        val pool = have.filter { wildSlot(it) == slot }.sorted()
-        if (pool.isEmpty()) return slot
+        val wild = have.filter { wildSlot(it) == slot }.sorted()
+        if (wild.isEmpty()) return slot
+        // One wild line alone takes turns with the built-in one, so it is still
+        // never the same twice running (minion 3's Flet rule).
+        val pool = if (wild.size == 1 && slot in have) wild + slot else wild
         return fresh(pool, lastWild[slot]).also { lastWild[slot] = it }
     }
 
@@ -89,12 +92,19 @@ class Character(private val random: Random = Random.Default) {
         }
         val mood = moods.firstOrNull { m -> have.any { mood(it) == m } } ?: return null
         val line = line(mood, have) ?: return null
-        if (mood == "angry") angryAt = now
         if (maneuver != null) {
             given.addLast(maneuver)
             if (given.size > REMEMBER) given.removeFirst()
         }
         return line
+    }
+
+    /**
+     * A flourish has started playing (Voice). The angry minute counts from a
+     * line she HEARD, not one a newer prompt replaced before it played.
+     */
+    fun heard(name: String, now: Double) {
+        if (mood(name) == "angry") angryAt = now
     }
 
     /** After the words saying what failed and what to do - never instead of them. */

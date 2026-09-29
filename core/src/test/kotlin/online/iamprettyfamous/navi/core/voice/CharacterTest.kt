@@ -112,6 +112,15 @@ class CharacterTest {
     }
 
     @Test
+    fun `one wild line alone takes turns with the built-in, so never twice running`() {
+        val have = setOf("continue", "wild-continue-go-on")
+        val c = Character(Dice())
+        val heard = (1..4).map { c.voiceFor("continue", emptySet(), have, "far") }
+        assertEquals(listOf("wild-continue-go-on", "continue", "wild-continue-go-on", "continue"), heard)
+        assertEquals("wild-arrive-x", Character(Dice()).voiceFor("arrive", emptySet(), setOf("wild-arrive-x"), "now"), "no built-in to take turns with")
+    }
+
+    @Test
     fun `a slot with only wild lines is still hers, and the prompt plays one`() {
         val have = setOf("wild-turn-left-go-left-if-you-want-to-live")
         val c = Character(Dice())
@@ -137,10 +146,13 @@ class CharacterTest {
     @Test
     fun `one angry line a minute at most`() {
         val c = Character(Dice())
-        assertEquals("angry", Character.mood(c.flourish(null, null, null, listOf("offroute"), pack, now = 0.0)!!.name))
-        assertNull(c.flourish(null, null, null, listOf("offroute"), pack, now = 25.0), "the same wrong turn, 25 s later")
+        val first = c.flourish(null, null, null, listOf("offroute"), pack, now = 0.0)!!
+        assertEquals("angry", Character.mood(first.name))
+        assertNotNull(c.flourish(null, null, null, listOf("offroute"), pack, now = 5.0), "not heard yet: a newer prompt replaced it")
+        c.heard(first.name, 5.0)
+        assertNull(c.flourish(null, null, null, listOf("offroute"), pack, now = 25.0), "the same wrong turn, 20 s after she heard one")
         assertEquals("scold", Character.mood(c.flourish(null, null, null, listOf("offroute", "speeding"), pack, now = 30.0)!!.name), "the next mood still may")
-        assertEquals("angry", Character.mood(c.flourish(null, null, null, listOf("rerouting"), pack, now = 61.0)!!.name))
+        assertEquals("angry", Character.mood(c.flourish(null, null, null, listOf("rerouting"), pack, now = 66.0)!!.name))
     }
 
     @Test
@@ -150,8 +162,8 @@ class CharacterTest {
         assertEquals("arrive", c.voiceFor("arrive", emptySet(), have, "far"), "In 1000 ft, MISSION ACCOMPLISHED is a lie")
         assertEquals("arrive", c.voiceFor("arrive", emptySet(), have, "near"))
         assertTrue(c.voiceFor("arrive", emptySet(), have, "now").startsWith("wild-arrive-"))
-        val turns = setOf("turn-left", "wild-turn-left-go")
-        assertEquals("wild-turn-left-go", c.voiceFor("turn-left", emptySet(), turns, "far"), "other slots are wild on every band")
+        val turns = setOf("turn-left", "wild-turn-left-go", "wild-turn-left-now")
+        assertTrue(c.voiceFor("turn-left", emptySet(), turns, "far").startsWith("wild-"), "other slots are wild on every band")
     }
 
     @Test
