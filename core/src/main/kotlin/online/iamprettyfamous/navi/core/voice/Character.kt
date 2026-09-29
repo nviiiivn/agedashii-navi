@@ -14,9 +14,14 @@ import kotlin.random.Random
  *   is her imported `<slot>`, then a random wild one (hers and built-in in one
  *   pool), then the built-in `<slot>`, then the phone. A line that is vague
  *   about direction is never named for a turn slot: it is a flourish instead.
+ *   The arrive slot's wild lines play on ARRIVING only: "In 1000 ft, MISSION
+ *   ACCOMPLISHED" says she is there when she is not (AGEDASHII's ruling).
  * - FLOURISHES, `flourish-<mood>-<slug>`: at most one per prompt, always LAST,
- *   after the instruction, its tail, the street and any situation line. Never
- *   on the "now" band, except the arrival's own "now", since nothing follows it.
+ *   after the instruction, its tail, the street and any situation line.
+ *   URGENT lines ("DO IT NOW") only on "near" and "now", never "far": half a
+ *   mile out they could put her into a junction early. On "now", only urgent
+ *   or the arrival's own line. ANGRY at most once a minute: a wrong turn is
+ *   no time to be shouted at five times.
  * - THE COUGH, `interject-cough*`: rarely, in the one join between a distance
  *   and its turn, never on "now", never in two prompts running.
  *
@@ -39,6 +44,7 @@ class Character(private val random: Random = Random.Default) {
     private var lastCough: String? = null
     private var coughedLast = false
     private val given = ArrayDeque<Any>()
+    private var angryAt: Double? = null
 
     /** Every slot she has a sound for: her names, plus the slots that only have wild lines. */
     fun slots(have: Set<String>): Set<String> =
@@ -47,10 +53,12 @@ class Character(private val random: Random = Random.Default) {
     /**
      * The file to play for [slot]: her imported one, else a random wild one
      * (never the same twice running for that slot), else the built-in one.
-     * [hers] are the names she imported; [have] is every playable name.
+     * [hers] are the names she imported; [have] is every playable name. With
+     * a [band], the arrive slot is the plain line short of "now".
      */
-    fun voiceFor(slot: String, hers: Set<String>, have: Set<String>): String {
+    fun voiceFor(slot: String, hers: Set<String>, have: Set<String>, band: String? = null): String {
         if (slot in hers || !on) return slot
+        if (slot == ManeuverKind.ARRIVE && band != null && band != "now") return slot
         val pool = have.filter { wildSlot(it) == slot }.sorted()
         if (pool.isEmpty()) return slot
         return fresh(pool, lastWild[slot]).also { lastWild[slot] = it }
@@ -61,24 +69,27 @@ class Character(private val random: Random = Random.Default) {
      * prompt announces (null for situation lines alone): each gets one at most
      * across its far, near and now prompts. [cues] are the situation lines on
      * the same fix. The mood is the first that applies, by [PRIORITY], among
-     * those she has lines for; then its [RATE] decides.
+     * those she has lines for; then its [RATE] decides. [now] is in seconds,
+     * for the angry lines' [ANGRY_EVERY_S].
      */
-    fun flourish(band: String?, kind: String?, maneuver: Any?, cues: List<String>, have: Set<String>): Item.Clip? {
+    fun flourish(band: String?, kind: String?, maneuver: Any?, cues: List<String>, have: Set<String>, now: Double = 0.0): Item.Clip? {
         if (!on) return null
         if (maneuver != null && maneuver in given) return null
         // The arrival's far and near prompts get none: its line is for being there.
         if (kind == ManeuverKind.ARRIVE && band != "now") return null
         val moods = ArrayList<String>()
+        val angryOk = angryAt.let { it == null || now - it >= ANGRY_EVERY_S }
         if (band == "now") {
-            if (maneuver != null && kind == ManeuverKind.ARRIVE) moods += "arrival"
+            if (maneuver != null) moods += if (kind == ManeuverKind.ARRIVE) "arrival" else "urgent"
         } else {
-            if ("offroute" in cues || "rerouting" in cues) moods += "angry"
+            if (angryOk && ("offroute" in cues || "rerouting" in cues)) moods += "angry"
             if ("speeding" in cues) moods += "scold"
             if ("start" in cues) moods += "start"
-            if (maneuver != null) moods += "urgent"
+            if (maneuver != null && band == "near") moods += "urgent"
         }
         val mood = moods.firstOrNull { m -> have.any { mood(it) == m } } ?: return null
         val line = line(mood, have) ?: return null
+        if (mood == "angry") angryAt = now
         if (maneuver != null) {
             given.addLast(maneuver)
             if (given.size > REMEMBER) given.removeFirst()
@@ -138,6 +149,9 @@ class Character(private val random: Random = Random.Default) {
 
         /** Which mood a prompt gets when several apply. */
         val PRIORITY = listOf("arrival", "angry", "scold", "start", "urgent")
+
+        /** Seconds between two angry lines, as for speeding: one per minute at most. */
+        const val ANGRY_EVERY_S = 60.0
 
         /** Rare: a cough is funny once. */
         const val COUGH_RATE = 0.08

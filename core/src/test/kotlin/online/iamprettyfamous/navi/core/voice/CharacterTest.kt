@@ -126,9 +126,37 @@ class CharacterTest {
     }
 
     @Test
-    fun `no flourish on the now band - except the arrival's own now`() {
+    fun `urgent on near and now, never far - AGEDASHII's ruling`() {
+        assertNull(Character(Dice()).flourish("far", "turn-left", maneuver, emptyList(), pack), "half a mile out, NOW! is dangerous")
+        assertEquals("urgent", Character.mood(Character(Dice()).flourish("near", "turn-left", maneuver, emptyList(), pack)!!.name))
+        assertEquals("urgent", Character.mood(Character(Dice()).flourish("now", "turn-left", maneuver, emptyList(), pack)!!.name))
+        assertEquals("start", Character.mood(Character(Dice()).flourish("far", "turn-left", maneuver, listOf("start"), pack)!!.name), "far takes another mood")
+        assertNull(Character(Dice()).flourish("now", "turn-left", maneuver, listOf("offroute"), pack.filter { Character.mood(it) != "urgent" }.toSet()), "on now, urgent or nothing")
+    }
+
+    @Test
+    fun `one angry line a minute at most`() {
         val c = Character(Dice())
-        assertNull(c.flourish("now", "turn-left", maneuver, emptyList(), pack))
+        assertEquals("angry", Character.mood(c.flourish(null, null, null, listOf("offroute"), pack, now = 0.0)!!.name))
+        assertNull(c.flourish(null, null, null, listOf("offroute"), pack, now = 25.0), "the same wrong turn, 25 s later")
+        assertEquals("scold", Character.mood(c.flourish(null, null, null, listOf("offroute", "speeding"), pack, now = 30.0)!!.name), "the next mood still may")
+        assertEquals("angry", Character.mood(c.flourish(null, null, null, listOf("rerouting"), pack, now = 61.0)!!.name))
+    }
+
+    @Test
+    fun `the arrive slot's wild lines play on arriving only`() {
+        val have = setOf("arrive", "wild-arrive-mission-accomplished", "wild-arrive-choppa")
+        val c = Character(Dice())
+        assertEquals("arrive", c.voiceFor("arrive", emptySet(), have, "far"), "In 1000 ft, MISSION ACCOMPLISHED is a lie")
+        assertEquals("arrive", c.voiceFor("arrive", emptySet(), have, "near"))
+        assertTrue(c.voiceFor("arrive", emptySet(), have, "now").startsWith("wild-arrive-"))
+        val turns = setOf("turn-left", "wild-turn-left-go")
+        assertEquals("wild-turn-left-go", c.voiceFor("turn-left", emptySet(), turns, "far"), "other slots are wild on every band")
+    }
+
+    @Test
+    fun `no flourish on the now band but urgent - and the arrival's own now`() {
+        val c = Character(Dice())
         val arrive = Any()
         assertNull(c.flourish("far", "arrive", arrive, emptyList(), pack), "the arrive far and near prompts get none")
         assertNull(c.flourish("near", "arrive", arrive, emptyList(), pack))
@@ -155,8 +183,8 @@ class CharacterTest {
     @Test
     fun `each mood's rate decides, one named constant each`() {
         assertEquals(0.25, Character.RATE.getValue("urgent"))
-        assertNull(Character(Dice(0.25)).flourish("far", "turn-left", maneuver, emptyList(), pack))
-        assertNotNull(Character(Dice(0.24)).flourish("far", "turn-left", maneuver, emptyList(), pack))
+        assertNull(Character(Dice(0.25)).flourish("near", "turn-left", maneuver, emptyList(), pack))
+        assertNotNull(Character(Dice(0.24)).flourish("near", "turn-left", maneuver, emptyList(), pack))
         assertNotNull(Character(Dice(0.99)).flourish("now", "arrive", maneuver, emptyList(), pack), "arrival is every time")
         assertNull(Character(Dice(0.5)).flourish("far", null, null, listOf("offroute"), pack))
     }
@@ -164,10 +192,10 @@ class CharacterTest {
     @Test
     fun `one per maneuver across its prompts, and never the same line twice running`() {
         val c = Character(Dice(picks = listOf(0, 0, 0)))
-        val a = c.flourish("far", "turn-left", maneuver, emptyList(), pack)
+        val a = c.flourish("near", "turn-left", maneuver, emptyList(), pack)
         assertNotNull(a)
-        assertNull(c.flourish("near", "turn-left", maneuver, emptyList(), pack), "that maneuver has had its line")
-        val b = c.flourish("far", "turn-right", Any(), emptyList(), pack)
+        assertNull(c.flourish("now", "turn-left", maneuver, emptyList(), pack), "that maneuver has had its line")
+        val b = c.flourish("near", "turn-right", Any(), emptyList(), pack)
         assertNotNull(b)
         assertNotEquals(a.name, b.name)
     }

@@ -264,14 +264,17 @@ object Voice {
         val have = clipNames()
         val slots = character.slots(have)
         val hers = herNames()
-        val choose = { slot: String -> character.voiceFor(slot, hers, have) }
+        val choose = { slot: String -> character.voiceFor(slot, hers, have, status.band) }
         val lines = cues.flatMap { VoiceLines.situation(it, slots, choose) }
         val turn = say?.let {
             val parts = VoiceLines.playlist(it, status.kind, status.band, status.turnInM, status.instruction, status.street, imperial, slots, streets, choose)
             character.cough(parts, status.band, status.turnInM, have)
         } ?: emptyList()
         // At most one, and LAST: after the instruction, its tail and any situation line.
-        val extra = character.flourish(status.band, status.kind, if (say != null) status.maneuver else null, cues, have)
+        val extra = character.flourish(
+            status.band, status.kind, if (say != null) status.maneuver else null, cues, have,
+            now = SystemClock.elapsedRealtime() / 1000.0,
+        )
         // The turn she is at plays FIRST and cuts in at once; anything else
         // waits for the word being said to finish (the Flet app's rule).
         val now = status.band == "now"
