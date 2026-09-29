@@ -39,6 +39,16 @@ object Guidance {
     /** The fixed distances used below [CRAWL_MS], in metres. */
     val CRAWL_BANDS_M: Map<String, Double> = linkedMapOf("far" to 250.0, "near" to 90.0, "now" to 25.0)
 
+    /**
+     * A maneuver already announced is announced again, short of "now", only
+     * once the distance has fallen below this share of where it last was. The
+     * bands move with speed: picked at a light, "far" (crawl, 250 m) fired at
+     * 178 m, then riding off at 15 m/s made "near" (300 m) due at 170 m - the
+     * same "In 600 ft, turn right" twice, 6 s apart (minion 1's emulator
+     * rides). Riding at one speed, far to near is 1/3 and crawl 90/250.
+     */
+    const val REPEAT_FRACTION = 0.6
+
     /** The graph's road classes, in index order. washi routing.py:116-119. */
     val ROAD_CLASSES: List<String> = listOf(
         "motorway", "motorway_link", "trunk", "trunk_link", "primary", "primary_link", "secondary",

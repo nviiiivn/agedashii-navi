@@ -68,6 +68,8 @@ class Follower(
 
     private var badRun = 0
     private val said = HashSet<Pair<Int, String>>()
+    // Where each maneuver was last announced, in metres to go (REPEAT_FRACTION).
+    private val saidAt = HashMap<Int, Double>()
 
     /**
      * Follow a new route, forgetting everything about the old - including what
@@ -82,6 +84,7 @@ class Follower(
         arrived = false
         badRun = 0
         said.clear()
+        saidAt.clear()
         last = null
         return route
     }
@@ -176,6 +179,11 @@ class Follower(
      * outwards-in would announce "in a quarter mile, turn left" at the corner
      * itself - a real bug once. Firing a band also marks every wider one said,
      * so a band crossed without being announced cannot fire later.
+     *
+     * A band wider than "now" that comes due while the distance is still above
+     * [Guidance.REPEAT_FRACTION] of where this maneuver was last announced is
+     * marked said and not spoken: it would repeat what she has just heard,
+     * only because her speed moved the bands. "now" always speaks.
      */
     /** The prompt due now for [man], and its band - or null. */
     private fun maybeSay(man: Maneuver, metres: Double?, speedMs: Double?): Pair<String, String>? {
@@ -190,6 +198,9 @@ class Follower(
                 said.add(index to other)
                 if (other == band) break
             }
+            val before = saidAt[index]
+            if (band != "now" && before != null && metres > before * Guidance.REPEAT_FRACTION) return null
+            saidAt[index] = metres
             return Guidance.spoken(man.instruction, man.street, metres, imperial, band) to band
         }
         return null

@@ -154,6 +154,29 @@ class PromptsTest {
     }
 
     @Test
+    fun `picked at a light then ridden off - the turn is said once, then at the corner`() {
+        // minion 1's rides: stopped 178 m out, "far" (crawl bands) fires; riding
+        // off at 15 m/s moves "near" to 300 m, due at once - the same words again.
+        val turn = points[20]
+        fun short(m: Double) = LatLon(turn.lat - m / 111_320.0, turn.lon)
+        val first = follower.update(short(178.0), speedMs = 0.0, now = 0.0)
+        assertTrue(first.say!!.startsWith("In "), "far, at the light")
+        assertNull(follower.update(short(170.0), speedMs = 15.0, now = 1.0).say, "not again 8 m later")
+        assertNull(follower.update(short(120.0), speedMs = 15.0, now = 4.0).say)
+        val corner = follower.update(short(85.0), speedMs = 15.0, now = 6.0)
+        assertEquals("now", corner.band)
+        assertFalse(corner.say!!.startsWith("In "))
+    }
+
+    @Test
+    fun `slowing down still gets the nearer warning`() {
+        val turn = points[20]
+        fun short(m: Double) = LatLon(turn.lat - m / 111_320.0, turn.lon)
+        assertEquals("far", follower.update(short(850.0), speedMs = 15.0, now = 0.0).band)
+        assertEquals("near", follower.update(short(85.0), speedMs = 2.0, now = 60.0).band, "85 m is well under 0.6 x 850")
+    }
+
+    @Test
     fun `arriving at walking pace still says so`() {
         // Below a crawl the "now" band is 25 m, the same as the arrival distance:
         // the fix that arrives is the only one that can say it (Flet v1.17.0).
