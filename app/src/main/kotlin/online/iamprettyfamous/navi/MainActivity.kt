@@ -491,11 +491,14 @@ class MainActivity : ComponentActivity() {
         val voice by Voice.state.collectAsState()
         LaunchedEffect(nav.route) { map.showRoute(nav.route?.points) }
         // A route holds the GPS the way a recording does, so guidance and the
-        // voice carry on with the screen locked.
-        val guiding = nav.route != null
+        // voice carry on with the screen locked - until she arrives, as the Flet
+        // app keys its service (minion 3). The service watches for arrival
+        // itself: locked, nothing here runs to tell it.
+        val guiding = nav.route != null && nav.status?.arrived != true
         LaunchedEffect(guiding, destName) {
             if (guiding) GuideService.start(this@MainActivity, destName ?: "your pin")
-            else GuideService.stop(this@MainActivity)
+            // Arrived, the service lets go once the arrival lines have played.
+            else if (nav.route == null) GuideService.stop(this@MainActivity)
         }
         LaunchedEffect(nav.dest, pin) { map.showMarks(nav.dest, pin) }
         // Routed: the offered pin has become the destination.
