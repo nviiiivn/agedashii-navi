@@ -175,7 +175,8 @@ class CharacterTest {
         val wild = have.filter { it.startsWith("wild-") }
         assertTrue(wild.isNotEmpty())
         assertEquals(emptyList(), wild.filter { Character.wildSlot(it) == null }, "a wild line with no slot")
-        assertEquals(Character.MOODS.toSet(), have.mapNotNull { Character.mood(it) }.toSet(), "every mood has lines")
+        // banter (AGEDASHII, 2026-09-30) is new: minion 5 fills it next; until then the rest must all have lines
+        assertEquals(Character.MOODS.toSet() - "banter", have.mapNotNull { Character.mood(it) }.toSet() - "banter", "every mood has lines")
         assertTrue(have.any(Character::isCough) && have.any(Character::isNumber))
     }
 
@@ -273,6 +274,9 @@ class CharacterTest {
     fun `urgent on now only - time words are true only at the corner - AGEDASHII's ruling`() {
         assertNull(Character(Dice()).flourish("far", "turn-left", maneuver, emptyList(), pack), "half a mile out, NOW! is dangerous")
         assertNull(Character(Dice()).flourish("near", "turn-left", maneuver, emptyList(), pack), "RIGHT NOW at 900 ft is false at 34 mph")
+        val banter = pack + "flourish-banter-correct"
+        assertEquals("banter", Character.mood(Character(Dice()).flourish("near", "turn-left", maneuver, emptyList(), banter)!!.name), "banter instead")
+        assertEquals("urgent", Character.mood(Character(Dice()).flourish("now", "turn-left", maneuver, emptyList(), banter)!!.name), "and urgent at the corner")
         assertEquals("urgent", Character.mood(Character(Dice()).flourish("now", "turn-left", maneuver, emptyList(), pack)!!.name))
         assertEquals("start", Character.mood(Character(Dice()).flourish("far", "turn-left", maneuver, listOf("start"), pack)!!.name), "far takes another mood")
         assertNull(Character(Dice()).flourish("now", "turn-left", maneuver, listOf("offroute"), pack.filter { Character.mood(it) != "urgent" }.toSet()), "on now, urgent or nothing")
@@ -447,7 +451,11 @@ class CharacterTest {
         // rolls: order, cough (high: none), F1 rate, F2 rate
         fun near(cues: List<String>, vararg rolls: Double) = Character(Dice(*rolls))
             .arrange(core("turn-left", "near", ft(500.0), "Turn left", have), emptyList(), "near", "turn-left", Any(), cues, have, emptySet()).after
-        assertEquals(emptyList(), near(emptyList(), 0.5, 0.99, 0.0, 0.0), "a correct turn 20 s out: no RIGHT NOW, no abuse")
+        assertEquals(emptyList(), near(emptyList(), 0.5, 0.99, 0.0, 0.0), "a correct turn with no banter lines: nothing timed, nothing abusive")
+        val kind = have + setOf("flourish-banter-haha", "flourish-banter-trust-me", "flourish-banter-no-problemo")
+        val happy = Character(Dice(0.5, 0.99, 0.0, 0.0)).arrange(core("turn-left", "near", ft(500.0), "Turn left", kind), emptyList(), "near", "turn-left", Any(), emptyList(), kind, emptySet()).after
+        assertTrue(happy.isNotEmpty(), "a correct turn keeps its character")
+        assertTrue(happy.all { Character.mood(it.name) == "banter" }, "enjoying itself WITH her - never urgent, never angry: $happy")
         val lost = near(listOf("offroute"), 0.5, 0.99, 0.0, 0.0)
         assertEquals(2, lost.size, "a mistake may earn two")
         assertTrue(lost.all { Character.mood(it.name) == "angry" && it.soft } && lost[0].name != lost[1].name, "$lost")

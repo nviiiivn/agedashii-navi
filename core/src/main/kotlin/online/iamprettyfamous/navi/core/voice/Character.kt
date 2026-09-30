@@ -25,7 +25,11 @@ import kotlin.random.Random
  *   URGENT lines ("DO IT NOW") only on "now", six seconds from the corner:
  *   time words are true only there - "RIGHT NOW" at 900 ft is a false
  *   statement at 34 mph (AGEDASHII). On "now", only urgent or the arrival's
- *   own line, and only one. A route start gets one flourish at most. ANGRY at most once a minute: a
+ *   own line, and only one. A route start gets one flourish at most.
+ *   A correct turn's far and near prompts take BANTER - "haha", "trust me",
+ *   "no problemo", "correct": true and kind, never timed, never abuse. A
+ *   flourish on a correct turn is the app enjoying itself WITH her; one on a
+ *   mistake is the app reacting to her; never at her expense. ANGRY at most once a minute: a
  *   wrong turn is no time to be shouted at five times.
  * - THE COUGH, `interject-cough*`: rarely, in a join INSIDE the instruction -
  *   between distance and maneuver, or in the middle of the maneuver when it
@@ -109,6 +113,7 @@ class Character(private val random: Random = Random.Default) {
             if (angryOk && ("offroute" in cues || "rerouting" in cues)) moods += "angry"
             if ("speeding" in cues) moods += "scold"
             if ("start" in cues) moods += "start"
+            if (maneuver != null) moods += "banter"
         }
         val mood = moods.firstOrNull { m -> have.any { mood(it) == m } } ?: return null
         val line = line(mood, have) ?: return null
@@ -226,8 +231,9 @@ class Character(private val random: Random = Random.Default) {
     /**
      * A second flourish after [first], [P_SECOND] of the time: a mood picked
      * evenly among those this moment allows (angry after off route or
-     * re-routing - under the minute - scold when speeding) that still has a
-     * line other than [first], then a line. None on a route start
+     * re-routing - under the minute - scold when speeding, banter on a far
+     * or near turn) that still has a line other than [first], then a line.
+     * None on a route start
      * from that mood's pool - never [first], whatever the pool's memory says.
      */
     private fun second(first: Item.Clip, band: String?, kind: String?, maneuver: Any?, cues: List<String>, have: Set<String>, now: Double): Item.Clip? {
@@ -238,9 +244,10 @@ class Character(private val random: Random = Random.Default) {
         if (angryOk && ("offroute" in cues || "rerouting" in cues)) moods += "angry"
         if ("speeding" in cues) moods += "scold"
         if ("start" in cues) moods += "start"
-        // A correct turn gets nothing here: never abuse - angry and scold belong
+        // A correct turn gets banter here: never abuse - angry and scold belong
         // to her MISTAKES only ("In 900 ft, Bear left onto Ascot Drive" + "GO TO
         // HELL") - and never urgency, which is true only at "now".
+        if (maneuver != null && (band == "far" || band == "near")) moods += "banter"
         val open = moods.filter { m -> have.any { mood(it) == m && it != first.name } }
         if (open.isEmpty()) return null
         val mood = open[random.nextInt(open.size)]
@@ -284,16 +291,16 @@ class Character(private val random: Random = Random.Default) {
 
     companion object {
         /** Every mood a flourish can have; a name with any other is not hers to play. */
-        val MOODS = listOf("start", "arrival", "angry", "urgent", "scold", "sorry", "ui")
+        val MOODS = listOf("start", "arrival", "angry", "urgent", "scold", "sorry", "ui", "banter")
 
         /** How often each mood's moment gets a line: one edit each. */
         val RATE = mapOf(
             "urgent" to 0.25, "arrival" to 1.0, "start" to 1.0, "angry" to 0.5, "scold" to 0.5,
-            "sorry" to 1.0, "ui" to 0.15,
+            "sorry" to 1.0, "ui" to 0.15, "banter" to 0.25,
         )
 
         /** Which mood a prompt gets when several apply. */
-        val PRIORITY = listOf("arrival", "angry", "scold", "start", "urgent")
+        val PRIORITY = listOf("arrival", "angry", "scold", "start", "urgent", "banter")
 
         /** The slots that say which way: a wild line for one must be hers. */
         val DIRECTIONS = setOf(
