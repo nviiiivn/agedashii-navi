@@ -51,7 +51,7 @@ class CharacterTest {
     }
 
     @Test
-    fun `minion 5's staged pool (315, widened) is taken, every file, and the wild lines find their slots`() {
+    fun `minion 5's staged pool (396, with banter) is taken, every file, and the wild lines find their slots`() {
         val files = listOf(
             "and-then.mp3", "arrive.mp3", "continue.mp3", "dist-0.1mile.mp3", "dist-1mile.mp3",
             "dist-half.mp3", "dist-quarter.mp3", "exit-left.mp3", "exit-right.mp3", "exit.mp3",
@@ -77,20 +77,55 @@ class CharacterTest {
             "flourish-arrival-stop-it-3.mp3", "flourish-arrival-stop-it.mp3",
             "flourish-arrival-terrific-2.mp3", "flourish-arrival-terrific.mp3",
             "flourish-arrival-well-that-hit-the-spot-2.mp3", "flourish-arrival-well-that-hit-the-spot.mp3",
-            "flourish-scold-are-you-crazy-2.mp3", "flourish-scold-are-you-crazy-3.mp3",
-            "flourish-scold-are-you-crazy.mp3", "flourish-scold-chill-out-2.mp3",
-            "flourish-scold-chill-out.mp3", "flourish-scold-dont-be-ridiculous-2.mp3",
-            "flourish-scold-dont-be-ridiculous.mp3", "flourish-scold-dont-do-that-2.mp3",
-            "flourish-scold-dont-do-that-3.mp3", "flourish-scold-dont-do-that.mp3",
-            "flourish-scold-drunk-2.mp3", "flourish-scold-drunk.mp3", "flourish-scold-enough-2.mp3",
-            "flourish-scold-enough.mp3", "flourish-scold-ridiculous.mp3", "flourish-scold-stop-it-2.mp3",
-            "flourish-scold-stop-it.mp3", "flourish-scold-stop-that-2.mp3", "flourish-scold-stop-that-3.mp3",
-            "flourish-scold-stop-that.mp3", "flourish-scold-stop-whining-2.mp3",
-            "flourish-scold-stop-whining.mp3", "flourish-scold-this-is-an-arrest.mp3",
-            "flourish-scold-you-lack-discipline-2.mp3", "flourish-scold-you-lack-discipline.mp3",
-            "flourish-sorry-count-on-me.mp3", "flourish-sorry-i-dont-know-2.mp3",
-            "flourish-sorry-i-dont-know.mp3", "flourish-sorry-i-lied-2.mp3", "flourish-sorry-i-lied-3.mp3",
-            "flourish-sorry-i-lied.mp3", "flourish-sorry-i-was-wrong.mp3", "flourish-sorry-im-sorry-2.mp3",
+            "flourish-banter-amazing.mp3", "flourish-banter-california-2.mp3",
+            "flourish-banter-california-3.mp3", "flourish-banter-california.mp3",
+            "flourish-banter-come-on-2.mp3", "flourish-banter-come-on-3.mp3", "flourish-banter-come-on.mp3",
+            "flourish-banter-correct-2.mp3", "flourish-banter-correct-3.mp3", "flourish-banter-correct.mp3",
+            "flourish-banter-definitely.mp3", "flourish-banter-exactly-2.mp3",
+            "flourish-banter-exactly-3.mp3", "flourish-banter-exactly.mp3", "flourish-banter-excellent-2.mp3",
+            "flourish-banter-excellent-3.mp3", "flourish-banter-excellent.mp3", "flourish-banter-go-on-2.mp3",
+            "flourish-banter-go-on-3.mp3", "flourish-banter-go-on.mp3", "flourish-banter-good-2.mp3",
+            "flourish-banter-good-3.mp3", "flourish-banter-good.mp3", "flourish-banter-great.mp3",
+            "flourish-banter-haha-2.mp3", "flourish-banter-haha-3.mp3", "flourish-banter-haha-4.mp3",
+            "flourish-banter-haha.mp3", "flourish-banter-i-agree-with-you.mp3",
+            "flourish-banter-i-can-do-this-all-day-long.mp3", "flourish-banter-i-hear-you-2.mp3",
+            "flourish-banter-i-hear-you-3.mp3", "flourish-banter-i-hear-you.mp3",
+            "flourish-banter-i-insist-2.mp3", "flourish-banter-i-insist-3.mp3",
+            "flourish-banter-i-insist.mp3", "flourish-banter-i-like-that-2.mp3",
+            "flourish-banter-i-like-that.mp3", "flourish-banter-i-love-it-2.mp3",
+            "flourish-banter-i-love-it.mp3", "flourish-banter-ill-be-back-2.mp3",
+            "flourish-banter-ill-be-back-3.mp3", "flourish-banter-ill-be-back.mp3",
+            "flourish-banter-im-a-quick-learner.mp3", "flourish-banter-its-show-time-2.mp3",
+            "flourish-banter-its-show-time-3.mp3", "flourish-banter-its-show-time.mp3",
+            "flourish-banter-no-problemo.mp3", "flourish-banter-oh-yeah-2.mp3", "flourish-banter-okay-2.mp3",
+            "flourish-banter-okay-3.mp3", "flourish-banter-okay.mp3", "flourish-banter-pasta-2.mp3",
+            "flourish-banter-pasta.mp3", "flourish-banter-sauerkraut-2.mp3", "flourish-banter-sauerkraut.mp3",
+            "flourish-banter-sure-2.mp3", "flourish-banter-sure-3.mp3", "flourish-banter-sure.mp3",
+            "flourish-banter-terrific-2.mp3", "flourish-banter-terrific-3.mp3",
+            "flourish-banter-terrific.mp3", "flourish-banter-thanks-for-the-tip.mp3",
+            "flourish-banter-thats-cool.mp3", "flourish-banter-thats-right-2.mp3",
+            "flourish-banter-thats-right.mp3", "flourish-banter-trust-me-2.mp3",
+            "flourish-banter-trust-me-3.mp3", "flourish-banter-trust-me.mp3",
+            "flourish-banter-well-that-hit-the-spot-2.mp3", "flourish-banter-well-that-hit-the-spot.mp3",
+            "flourish-banter-what-are-we-having-for-breakfast-2.mp3",
+            "flourish-banter-what-are-we-having-for-breakfast.mp3", "flourish-banter-yeah-2.mp3",
+            "flourish-banter-yeah-3.mp3", "flourish-banter-yeah.mp3", "flourish-banter-yes-2.mp3",
+            "flourish-banter-yes-3.mp3", "flourish-banter-yes.mp3", "flourish-banter-yummy-2.mp3",
+            "flourish-banter-yummy.mp3", "flourish-scold-are-you-crazy-2.mp3",
+            "flourish-scold-are-you-crazy-3.mp3", "flourish-scold-are-you-crazy.mp3",
+            "flourish-scold-chill-out-2.mp3", "flourish-scold-chill-out.mp3",
+            "flourish-scold-dont-be-ridiculous-2.mp3", "flourish-scold-dont-be-ridiculous.mp3",
+            "flourish-scold-dont-do-that-2.mp3", "flourish-scold-dont-do-that-3.mp3",
+            "flourish-scold-dont-do-that.mp3", "flourish-scold-drunk-2.mp3", "flourish-scold-drunk.mp3",
+            "flourish-scold-enough-2.mp3", "flourish-scold-enough.mp3", "flourish-scold-ridiculous.mp3",
+            "flourish-scold-stop-it-2.mp3", "flourish-scold-stop-it.mp3", "flourish-scold-stop-that-2.mp3",
+            "flourish-scold-stop-that-3.mp3", "flourish-scold-stop-that.mp3",
+            "flourish-scold-stop-whining-2.mp3", "flourish-scold-stop-whining.mp3",
+            "flourish-scold-this-is-an-arrest.mp3", "flourish-scold-you-lack-discipline-2.mp3",
+            "flourish-scold-you-lack-discipline.mp3", "flourish-sorry-count-on-me.mp3",
+            "flourish-sorry-i-dont-know-2.mp3", "flourish-sorry-i-dont-know.mp3",
+            "flourish-sorry-i-lied-2.mp3", "flourish-sorry-i-lied-3.mp3", "flourish-sorry-i-lied.mp3",
+            "flourish-sorry-i-was-wrong.mp3", "flourish-sorry-im-sorry-2.mp3",
             "flourish-sorry-im-sorry-3.mp3", "flourish-sorry-im-sorry.mp3", "flourish-sorry-negative-2.mp3",
             "flourish-sorry-negative-3.mp3", "flourish-sorry-negative.mp3", "flourish-sorry-no-deal-2.mp3",
             "flourish-sorry-no-deal-3.mp3", "flourish-sorry-no-deal.mp3", "flourish-sorry-oh-no-2.mp3",
@@ -175,8 +210,7 @@ class CharacterTest {
         val wild = have.filter { it.startsWith("wild-") }
         assertTrue(wild.isNotEmpty())
         assertEquals(emptyList(), wild.filter { Character.wildSlot(it) == null }, "a wild line with no slot")
-        // banter (AGEDASHII, 2026-09-30) is new: minion 5 fills it next; until then the rest must all have lines
-        assertEquals(Character.MOODS.toSet() - "banter", have.mapNotNull { Character.mood(it) }.toSet() - "banter", "every mood has lines")
+        assertEquals(Character.MOODS.toSet(), have.mapNotNull { Character.mood(it) }.toSet(), "every mood has lines, banter included")
         assertTrue(have.any(Character::isCough) && have.any(Character::isNumber))
     }
 
