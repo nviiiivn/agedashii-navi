@@ -4,8 +4,9 @@
          background, the splash, and the window before the ride screen draws. -->
     <color name="xnav_ground">#0D1117</color>
 
-    <!-- NoActionBar: the ride screen draws edge to edge. -->
+    <!-- NoActionBar: the ride screen draws edge to edge. Before Android 12 the
+         window is the splash, so it carries her logo (values-v31 has the rest). -->
     <style name="Theme.Xnav" parent="@android:style/Theme.DeviceDefault.NoActionBar">
-        <item name="android:windowBackground">@color/xnav_ground</item>
+        <item name="android:windowBackground">@drawable/xnav_splash</item>
     </style>
 </resources>

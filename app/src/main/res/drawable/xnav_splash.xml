@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Before Android 12 there is no system splash: the window itself is the
+     first thing she sees. Her artwork (navi-512.png cut to its ring,
+     tools/her-art.py) on its own ground, and nothing else. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@color/xnav_ground" />
+    <item
+        android:width="192dp"
+        android:height="192dp"
+        android:gravity="center"
+        android:drawable="@drawable/xnav_logo" />
+</layer-list>

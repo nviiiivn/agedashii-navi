@@ -17,6 +17,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.flow.StateFlow
+import online.iamprettyfamous.navi.R
 import online.iamprettyfamous.navi.MainActivity
 import online.iamprettyfamous.navi.core.telemetry.Ride
 
@@ -206,7 +207,7 @@ class RideService : Service() {
         val stop = PendingIntent.getService(this, 1, Intent(this, RideService::class.java).setAction(ACTION_STOP),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         return NotificationCompat.Builder(this, CHANNEL)
-            .setSmallIcon(android.R.drawable.ic_menu_mylocation)
+            .setSmallIcon(R.drawable.ic_notify)
             .setContentTitle("xnav.k")
             .setContentText(text)
             .setOngoing(true)

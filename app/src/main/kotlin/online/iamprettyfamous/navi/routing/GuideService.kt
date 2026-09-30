@@ -24,6 +24,7 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import online.iamprettyfamous.navi.R
 import online.iamprettyfamous.navi.MainActivity
 import online.iamprettyfamous.navi.record.Telemetry
 
@@ -128,7 +129,7 @@ class GuideService : Service() {
         val end = PendingIntent.getService(this, 2, Intent(this, GuideService::class.java).setAction(ACTION_END),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         return NotificationCompat.Builder(this, CHANNEL)
-            .setSmallIcon(android.R.drawable.ic_menu_directions)
+            .setSmallIcon(R.drawable.ic_notify)
             .setContentTitle("xnav.k")
             .setContentText("Guiding you to $to")
             .setOngoing(true)

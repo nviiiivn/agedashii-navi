@@ -482,6 +482,9 @@ class RideMapController(context: Context) {
         const val MARKS_LAYER = "agedashii-marks"
         const val EMPTY = "{\"type\":\"FeatureCollection\",\"features\":[]}"
         const val FALLBACK_WIDTH = "[\"interpolate\",[\"exponential\",1.5],[\"zoom\"],10,2.75,14,7.5,18,32.5]"
+        // Her two marker choices are her own two bikes, from her artwork
+        // (tools/her-art.py): yellow is her Ninja (navi-ex), black her CB750
+        // (navi). They were a Material Icons motorcycle glyph on a disc.
         val BIKES = mapOf("yellow" to R.drawable.bike_yellow, "black" to R.drawable.bike_black)
     }
 }
