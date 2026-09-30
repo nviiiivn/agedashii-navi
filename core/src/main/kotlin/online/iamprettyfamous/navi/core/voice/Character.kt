@@ -113,7 +113,7 @@ class Character(private val random: Random = Random.Default) {
             if (angryOk && ("offroute" in cues || "rerouting" in cues)) moods += "angry"
             if ("speeding" in cues) moods += "scold"
             if ("start" in cues) moods += "start"
-            if (maneuver != null) moods += "banter"
+            if (maneuver != null && !mistake(cues)) moods += "banter"
         }
         val mood = moods.firstOrNull { m -> have.any { mood(it) == m } } ?: return null
         val line = line(mood, have) ?: return null
@@ -131,6 +131,13 @@ class Character(private val random: Random = Random.Default) {
     fun heard(name: String, now: Double) {
         if (mood(name) == "angry") angryAt = now
     }
+
+    /**
+     * Banter is for a correct turn only: on a fix that carries a mistake it is
+     * no candidate - "big mistake" + "haha" would be at her expense, and with
+     * angry held back by its minute a mistake gets quiet, not a joke.
+     */
+    private fun mistake(cues: List<String>): Boolean = "offroute" in cues || "rerouting" in cues || "speeding" in cues
 
     /** After the words saying what failed and what to do - never instead of them. */
     fun sorry(have: Set<String>): Item.Clip? = if (on) line("sorry", have) else null
@@ -247,7 +254,7 @@ class Character(private val random: Random = Random.Default) {
         // A correct turn gets banter here: never abuse - angry and scold belong
         // to her MISTAKES only ("In 900 ft, Bear left onto Ascot Drive" + "GO TO
         // HELL") - and never urgency, which is true only at "now".
-        if (maneuver != null && (band == "far" || band == "near")) moods += "banter"
+        if (maneuver != null && (band == "far" || band == "near") && !mistake(cues)) moods += "banter"
         val open = moods.filter { m -> have.any { mood(it) == m && it != first.name } }
         if (open.isEmpty()) return null
         val mood = open[random.nextInt(open.size)]

@@ -456,6 +456,10 @@ class CharacterTest {
         val happy = Character(Dice(0.5, 0.99, 0.0, 0.0)).arrange(core("turn-left", "near", ft(500.0), "Turn left", kind), emptyList(), "near", "turn-left", Any(), emptyList(), kind, emptySet()).after
         assertTrue(happy.isNotEmpty(), "a correct turn keeps its character")
         assertTrue(happy.all { Character.mood(it.name) == "banter" }, "enjoying itself WITH her - never urgent, never angry: $happy")
+        val lostKind = Character(Dice(0.5, 0.99, 0.0, 0.0)).arrange(core("turn-left", "near", ft(500.0), "Turn left", kind), emptyList(), "near", "turn-left", Any(), listOf("offroute"), kind, emptySet()).after
+        assertTrue(lostKind.none { Character.mood(it.name) == "banter" }, "no joke on a mistake: $lostKind")
+        val arriving = Character(Dice()).flourish("near", "arrive", Any(), emptyList(), kind)
+        assertNull(arriving, "the arrival's far and near get none, banter included")
         val lost = near(listOf("offroute"), 0.5, 0.99, 0.0, 0.0)
         assertEquals(2, lost.size, "a mistake may earn two")
         assertTrue(lost.all { Character.mood(it.name) == "angry" && it.soft } && lost[0].name != lost[1].name, "$lost")
