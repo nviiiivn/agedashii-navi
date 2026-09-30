@@ -21,8 +21,13 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
@@ -405,11 +410,26 @@ private fun GroupView(group: Group, p: Palette, spacing: Dp) {
  * Nothing here is tappable: the dash is read, not touched, while riding.
  */
 @Composable
-fun HudOverlay(hud: Hud?, p: Palette, modifier: Modifier = Modifier, top: TopStack = TopStack()) {
-    if (hud == null) return
-    Box(modifier.fillMaxSize().safeDrawingPadding()) {
-        for (group in hud.groups) RegionView(group, hud, p, top)
+fun HudOverlay(
+    hud: Hud?,
+    p: Palette,
+    modifier: Modifier = Modifier,
+    top: TopStack = TopStack(),
+    onBounds: (List<Rect>) -> Unit = {},
+) {
+    if (hud == null) {
+        LaunchedEffect(Unit) { onBounds(emptyList()) }
+        return
     }
+    // Where each group's panel sits, in window pixels, for the map camera to
+    // keep the bike clear of (minion 1's padding) - sideways, a tall banner
+    // pushed the edge panel down onto the bike.
+    val boxes = remember(hud.groups.size) { mutableStateMapOf<Int, Rect>() }
+    Box(modifier.fillMaxSize().safeDrawingPadding()) {
+        hud.groups.forEachIndexed { i, group -> RegionView(group, hud, p, top) { boxes[i] = it } }
+    }
+    val all = boxes.values.toList()
+    LaunchedEffect(all) { onBounds(all) }
 }
 
 /**
@@ -440,14 +460,15 @@ private fun clearance(region: Region, hud: Hud, top: TopStack): Pair<Dp, Dp> {
 }
 
 @Composable
-private fun BoxScope.RegionView(group: Group, hud: Hud, p: Palette, stack: TopStack) {
+private fun BoxScope.RegionView(group: Group, hud: Hud, p: Palette, stack: TopStack, report: (Rect) -> Unit) {
     val (start, top) = clearance(group.region, hud, stack)
+    val seen = Modifier.onGloballyPositioned { report(it.boundsInWindow()) }
     when (group.region) {
         Region.STRIP -> Box(
-            Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(p.bg).border(1.dp, p.border)
+            Modifier.align(Alignment.BottomCenter).fillMaxWidth().then(seen).background(p.bg).border(1.dp, p.border)
                 .padding(start = 10.dp + start, top = 10.dp, end = 10.dp, bottom = 10.dp),
         ) { GroupView(group, p, 10.dp) }
-        Region.CENTER -> Box(Modifier.align(Alignment.Center).padding(top = top)) { GroupView(group, p, 4.dp) }
+        Region.CENTER -> Box(Modifier.align(Alignment.Center).padding(top = top).then(seen)) { GroupView(group, p, 4.dp) }
         else -> {
             val align = when (group.region) {
                 Region.TOP_START -> Alignment.TopStart
@@ -467,7 +488,7 @@ private fun BoxScope.RegionView(group: Group, hud: Hud, p: Palette, stack: TopSt
                 group.items.size > 1 -> 4.dp
                 else -> 0.dp
             }
-            val margin = Modifier.align(align).padding(start = 8.dp + start, top = 10.dp + top, end = 8.dp, bottom = 10.dp)
+            val margin = Modifier.align(align).padding(start = 8.dp + start, top = 10.dp + top, end = 8.dp, bottom = 10.dp).then(seen)
             Glass(p, margin, vertical = if (group.region == Region.EDGE) 8.dp else 6.dp) {
                 GroupView(group, p, spacing)
             }
