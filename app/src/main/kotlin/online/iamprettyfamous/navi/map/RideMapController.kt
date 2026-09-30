@@ -89,6 +89,8 @@ class RideMapController(context: Context) {
             map = m
             configure(m)
             applyTheme(theme)
+            // A clearance measured before the map was ready is not lost.
+            if (clear.any { it != 0.0 }) m.moveCamera(org.maplibre.android.camera.CameraUpdateFactory.paddingTo(clear))
         }
     }
 
@@ -439,18 +441,19 @@ class RideMapController(context: Context) {
 
     private var hadFix = false
 
-    private var topClearPx = 0.0
+    private var clear = doubleArrayOf(0.0, 0.0, 0.0, 0.0)
 
     /**
-     * Keeps her bike out from under the turn banner: the camera centres in the
-     * map BELOW [px] from the top. In landscape the banner and the route line
-     * under it cover nearly half the screen, and the bike sat behind them.
+     * Keeps her bike out from under the turn banner and the dash: the camera
+     * centres in the map inside [pad] (left, top, right, bottom, px - see
+     * CameraClear). In landscape the banner and the route line under it cover
+     * nearly half the screen, and the bike sat behind them - then, pushed below
+     * them, on the gauges.
      */
-    fun setTopClear(px: Double) {
-        if (px == topClearPx) return
-        topClearPx = px
+    fun setClear(pad: DoubleArray) {
+        if (pad.contentEquals(clear)) return
+        clear = pad
         val m = map ?: return
-        val pad = doubleArrayOf(0.0, px, 0.0, 0.0)
         if (locationActive && m.locationComponent.cameraMode != CameraMode.NONE) {
             m.locationComponent.paddingWhileTracking(pad, 300L)
         } else {

@@ -55,8 +55,14 @@ import online.iamprettyfamous.navi.routing.Router
 import online.iamprettyfamous.navi.core.geo.LatLon
 import online.iamprettyfamous.navi.core.geo.Maneuver
 import androidx.activity.compose.BackHandler
+import online.iamprettyfamous.navi.ui.ButtonColumn
 import online.iamprettyfamous.navi.ui.ButtonColumnLayout
+import online.iamprettyfamous.navi.ui.CameraClear
 import online.iamprettyfamous.navi.ui.TopStack
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.IntSize
 import online.iamprettyfamous.navi.ui.Chip
 import online.iamprettyfamous.navi.ui.FollowGlyph
 import online.iamprettyfamous.navi.ui.RoundButton
@@ -530,7 +536,8 @@ class MainActivity : ComponentActivity() {
         BackHandler(enabled = whereToOpen && !settingsOpen) { whereToOpen = false }
         val places by PlacesStore.state.collectAsState()
         val dataPack by DataPack.state.collectAsState()
-        Box(Modifier.fillMaxSize().background(p.bg)) {
+        var screenSize by remember { mutableStateOf(IntSize.Zero) }
+        Box(Modifier.fillMaxSize().background(p.bg).onSizeChanged { screenSize = it }) {
             AndroidView(factory = { map.mapView }, modifier = Modifier.fillMaxSize())
 
             // The dash over the map. Landscape puts the gauges down her chosen
@@ -543,13 +550,19 @@ class MainActivity : ComponentActivity() {
             }
             // How tall the lines beside record are, measured: the dash moves out from under them.
             var topStack by remember { mutableStateOf(TopStack()) }
-            // The camera centres below the banner, so the bike is never under it.
+            // The camera centres below the banner and clear of the dash's panels,
+            // so the bike is never under either (CameraClear).
             val density = LocalDensity.current
             val safeTop = WindowInsets.safeDrawing.getTop(density)
-            LaunchedEffect(topStack, safeTop) {
-                map.setTopClear(if (topStack.banner) safeTop + topStack.clearDp * density.density.toDouble() else 0.0)
+            val safeLeft = WindowInsets.safeDrawing.getLeft(density, LocalLayoutDirection.current)
+            var dashBoxes by remember { mutableStateOf(emptyList<Rect>()) }
+            LaunchedEffect(topStack, safeTop, safeLeft, dashBoxes, screenSize, wide) {
+                val top = if (topStack.banner) safeTop + topStack.clearDp * density.density.toDouble() else 0.0
+                map.setClear(CameraClear.of(screenSize.width.toFloat(), screenSize.height.toFloat(), density.density, top,
+                    dashBoxes, wide, safeLeft + ButtonColumn.CLEAR_DP * density.density).array())
             }
-            HudOverlay(if (dashOn) Hud.plan(dash, hudLayout, wide, anchor) else null, p, top = topStack)
+            HudOverlay(if (dashOn) Hud.plan(dash, hudLayout, wide, anchor) else null, p, top = topStack,
+                onBounds = { dashBoxes = it })
             // The turn banner, from the Follower's Status - the same turn the voice
             // announces, in the banner's own words (the voice's are hers). Null
             // until minion 1's Follower publishes it; then this line is the only
