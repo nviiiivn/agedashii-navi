@@ -28,10 +28,10 @@
         tools:node="remove" />
 
     <application
-        android:label="Navi K"
+        android:label="xnav.k"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher"
-        android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
+        android:theme="@style/Theme.Xnav">
 
         <activity
             android:name=".MainActivity"

@@ -208,7 +208,7 @@ fun SettingsPanel(
 
             Heading("About", p)
             Action("How this works", p) { onHelp() }
-            Text("Agedashii Navi $version", p, size = 16)
+            Text("xnav.k $version", p, size = 16)
             for (line in CREDITS) Text(line, p, size = 12, faint = true)
         }
     }

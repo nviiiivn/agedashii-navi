@@ -207,7 +207,7 @@ class RideService : Service() {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         return NotificationCompat.Builder(this, CHANNEL)
             .setSmallIcon(android.R.drawable.ic_menu_mylocation)
-            .setContentTitle("Navi")
+            .setContentTitle("xnav.k")
             .setContentText(text)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
@@ -280,7 +280,7 @@ class RideService : Service() {
                     recording = false, name = full?.name, path = path,
                     samples = full?.count ?: 0, distanceM = full?.distanceM ?: 0.0,
                     exported = files,
-                    cutOff = "Android closed Navi mid-ride" + (at?.let { ". Saved up to $it" } ?: ""),
+                    cutOff = "Android closed xnav.k mid-ride" + (at?.let { ". Saved up to $it" } ?: ""),
                 ))
             }, "ride-recover").start()
         }

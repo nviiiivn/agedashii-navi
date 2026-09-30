@@ -706,12 +706,12 @@ class MainActivity : ComponentActivity() {
         problem == Problem.NO_TILES ->
             "No map file. Copy ${MapFiles.TILES_NAME} to\n${map.tiles?.path ?: "app storage"}"
         problem == Problem.UNREADABLE_STORAGE ->
-            "Navi can't read its storage folder: it was made before Navi first ran.\n" +
-                "Reinstall, open Navi once, then copy ${MapFiles.TILES_NAME} again"
+            "xnav.k can't read its storage folder: it was made before xnav.k first ran.\n" +
+                "Reinstall, open xnav.k once, then copy ${MapFiles.TILES_NAME} again"
         problem == Problem.BAD_TILES -> "${MapFiles.TILES_NAME} is not a readable PMTiles v3 archive"
         problem == Problem.NO_STYLE -> "This build has no map style"
         problem == Problem.STYLE_MISSING -> "No ${palette(theme).name} map in this build — showing Night's"
-        !granted -> "Location is off for Navi — no bike on the map"
+        !granted -> "Location is off for xnav.k — no bike on the map"
         !Telemetry.hasGps(this) -> "This phone reports no GPS receiver"
         fixAge == null -> "Waiting for GPS"
         // The Flet app's own sentence (routing.START_OUTSIDE), so both apps say it alike.

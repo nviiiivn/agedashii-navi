@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The ground of her artwork (navi-*.png's corners): the launcher icon's
+         background, the splash, and the window before the ride screen draws. -->
+    <color name="xnav_ground">#0D1117</color>
+
+    <!-- NoActionBar: the ride screen draws edge to edge. -->
+    <style name="Theme.Xnav" parent="@android:style/Theme.DeviceDefault.NoActionBar">
+        <item name="android:windowBackground">@color/xnav_ground</item>
+    </style>
+</resources>

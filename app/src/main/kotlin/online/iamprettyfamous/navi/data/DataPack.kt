@@ -122,7 +122,7 @@ object DataPack {
                 } catch (ex: Exception) {
                     part.delete()
                     Log.w(TAG, "unpacking ${e.name} failed", ex)
-                    _state.value = State(error = "The map could not be unpacked (${e.name}: ${ex.message}) - free some space and open Navi again")
+                    _state.value = State(error = "The map could not be unpacked (${e.name}: ${ex.message}) - free some space and open xnav.k again")
                     return@post
                 }
                 val sha = digest.digest().joinToString("") { "%02x".format(it) }
@@ -133,7 +133,7 @@ object DataPack {
                 }
                 if (!part.renameTo(dst)) {
                     part.delete()
-                    _state.value = State(error = "The map could not be put in place (${e.name}) - open Navi again")
+                    _state.value = State(error = "The map could not be put in place (${e.name}) - open xnav.k again")
                     return@post
                 }
             }

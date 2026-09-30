@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Android 12+ draws its own splash: her artwork on its own ground, as the
+         Flet app's does, and nothing else - no name, no text. The maskable art
+         keeps the whole ring inside the splash's round crop. -->
+    <style name="Theme.Xnav" parent="@android:style/Theme.DeviceDefault.NoActionBar">
+        <item name="android:windowBackground">@color/xnav_ground</item>
+        <item name="android:windowSplashScreenBackground">@color/xnav_ground</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@mipmap/ic_launcher_foreground</item>
+    </style>
+</resources>
