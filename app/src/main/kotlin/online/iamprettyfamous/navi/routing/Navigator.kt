@@ -1,6 +1,8 @@
 package online.iamprettyfamous.navi.routing
 
 import android.location.Location
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -139,8 +141,38 @@ object Navigator {
             // The Follower decides what is due; each prompt comes once - in her
             // voice where she has one, after any situation line of this fix.
             val said = cues.update(status.ok, status.offRoute, destination, rerouting, over = false, now = now)
-            Voice.prompt(status, imperial, said)
+            val situation = said.filter { it in HELD_CUES }
+            if (rerouting && situation.isNotEmpty()) {
+                // Held until the re-route answers: if its first prompt is a
+                // "now", the line would be cut 0.3 s in - "what the h-" - so
+                // it is dropped and the turn plays alone (AGEDASHII's ruling).
+                Voice.prompt(status, imperial, said - situation.toSet())
+                hold(situation, status)
+            } else {
+                Voice.prompt(status, imperial, said)
+            }
         }
+    }
+
+    /** An off-route/re-routing line waiting on the re-route asked on its fix. */
+    private class Held(val cues: List<String>, val status: Status, val token: Int)
+
+    private var held: Held? = null
+    private var heldTokens = 0
+    private val main = Handler(Looper.getMainLooper())
+
+    private fun hold(cues: List<String>, status: Status) {
+        val h = Held(cues, status.copy(say = null), ++heldTokens)
+        held = h
+        // A router that never answers must not leave her without the line.
+        main.postDelayed({ synchronized(lock) { if (held === h) sayHeld() } }, HOLD_MS)
+    }
+
+    /** Say the held line now, and forget it. Under [lock]. */
+    private fun sayHeld() {
+        val h = held ?: return
+        held = null
+        Voice.prompt(h.status, imperial, h.cues)
     }
 
     private fun ask(from: LatLon, dest: LatLon, gen: Int, first: Boolean) {
@@ -171,6 +203,10 @@ object Navigator {
     /** Below this she is stopped or creeping, and no bearing is trusted (m/s, ~7 mph). */
     private const val HEADING_MIN_MS = 3.0
 
+    /** The situation lines held for the re-route's answer, and the longest they wait for it. */
+    private val HELD_CUES = setOf("offroute", "rerouting")
+    private const val HOLD_MS = 1500L
+
     private fun answered(line: RouteLine, dest: LatLon, gen: Int, first: Boolean) {
         synchronized(lock) {
             val now = System.currentTimeMillis() / 1000.0
@@ -184,8 +220,12 @@ object Navigator {
                 } else {
                     nav.copy(rerouteNote = "Re-route failed: ${line.reason.ifEmpty { "no route" }} - still on the old route")
                 }
-                // Said once per off-route spell; the gate's retries stay quiet.
-                if (!first && cues.refused()) Voice.refusal(line.reason)
+                // The held line, then - once per spell - why there is no route: one playlist.
+                if (!first) {
+                    val lead = held?.cues.orEmpty()
+                    held = null
+                    if (cues.refused()) Voice.refusal(line.reason, lead) else if (lead.isNotEmpty()) Voice.prompt(nav.status ?: Status(ok = true), imperial, lead)
+                }
                 return
             }
             follower.setRoute(line)
@@ -203,6 +243,16 @@ object Navigator {
             _nav.value = Nav(dest = dest, route = line, status = status, gap = gap, reroutes = reroutes)
             // The first update of a new route can already be inside a prompt band;
             // the Follower counts it said, so it must be said here - after "start".
+            // The held off-route line plays only if the new route does not open
+            // with a "now": that turn would cut it to a fragment.
+            if (!first) {
+                if (status?.band == "now") {
+                    if (held != null) Log.i(TAG, "off-route line dropped: the new route starts with a turn here")
+                    held = null
+                } else {
+                    sayHeld()
+                }
+            }
             status?.let { Voice.prompt(it, imperial, cues.update(it.ok, it.offRoute, destination, false, over = false, now = now)) }
         }
     }

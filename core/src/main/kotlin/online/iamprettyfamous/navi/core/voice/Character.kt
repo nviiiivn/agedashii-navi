@@ -82,7 +82,8 @@ class Character(private val random: Random = Random.Default) {
         if (wild.isEmpty()) return slot
         // One wild line alone takes turns with the built-in one, so it is still
         // never the same twice running (minion 3's Flet rule).
-        val pool = if (wild.size == 1 && slot in have) wild + slot else wild
+        // "Lone" counts phrases: takes of one line plus the built-in alternate.
+        val pool = if (wild.map(::phrase).distinct().size == 1 && slot in have) wild + slot else wild
         return fresh(pool, "wild:$slot")
     }
 
@@ -255,22 +256,30 @@ class Character(private val random: Random = Random.Default) {
     }
 
     /**
-     * A uniform pick from [pool] (key [key]) avoiding its last k picks, k =
-     * min([REMEMBERED], n/2) for n lines - 2 lines: the last one, as before; 4:
+     * A uniform pick from [pool] (key [key]) avoiding its last k PHRASES, k =
+     * min([REMEMBERED], n/2) for n distinct phrases - 2 lines: the last one, as before; 4:
      * the last two; 8 or more: the last four. Hers: "there's so many options
      * for funny things" - a small pool cycling forever was all she heard.
      * [never] is left out whatever the memory says (a second flourish never
      * repeats the first). With nothing left, the least recent is allowed.
      */
     private fun fresh(pool: List<String>, key: String, never: String? = null): String {
+        // The memory works on PHRASES: what-the-hell-4 and what-the-hell-6 are
+        // the same words to her ears (AGEDASHII). A phrase is picked evenly,
+        // then one of its takes, so a phrase with three takes is not three
+        // times as likely.
         val seen = recent.getOrPut(key) { ArrayDeque() }
-        val k = minOf(REMEMBERED, pool.size / 2)
+        val phrases = pool.groupBy(::phrase)
+        val k = minOf(REMEMBERED, phrases.size / 2)
         val avoid = seen.takeLast(k).toSet()
-        val from = pool.filter { it !in avoid && it != never }.ifEmpty { pool.filter { it != never } }.ifEmpty { pool }
-        val pick = from[random.nextInt(from.size)]
-        seen.addLast(pick)
+        val not = never?.let(::phrase)
+        val open = phrases.keys.filter { it !in avoid && it != not }
+            .ifEmpty { phrases.keys.filter { it != not } }.ifEmpty { phrases.keys.toList() }
+        val said = open[random.nextInt(open.size)]
+        val takes = phrases.getValue(said)
+        seen.addLast(said)
         while (seen.size > REMEMBERED) seen.removeFirst()
-        return pick
+        return if (takes.size == 1) takes[0] else takes[random.nextInt(takes.size)]
     }
 
     companion object {
@@ -345,6 +354,10 @@ class Character(private val random: Random = Random.Default) {
 
         /** The slot a half belongs to: part-continue-a -> continue; null for anything else. */
         fun partSlot(name: String): String? = PART.matchEntire(name)?.groupValues?.get(1)?.takeIf { VoiceLines.isSlot(it) }
+
+        /** A line's words, whatever the take: what-the-hell-6 -> what-the-hell. */
+        fun phrase(name: String): String = name.replace(TAKE, "")
+        private val TAKE = Regex("""-[0-9]+$""")
 
         /** Any name of hers that is part of the character rather than a slot. */
         fun isName(name: String): Boolean =

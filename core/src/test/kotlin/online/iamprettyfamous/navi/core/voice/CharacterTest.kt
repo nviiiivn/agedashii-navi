@@ -182,7 +182,7 @@ class CharacterTest {
     @Test
     fun `a pool avoids its last few picks - min(4, n over 2) - so a big pool never loops`() {
         // AGEDASHII's ruling on her "there's so many options for funny things"
-        val eight = (1..8).map { "wild-offroute-line-$it" }.toSet() + "offroute"
+        val eight = ('a'..'h').map { "wild-offroute-line-$it" }.toSet() + "offroute"
         val c = Character(Dice())
         val heard = (1..20).map { c.voiceFor("offroute", emptySet(), eight, null) }
         heard.windowed(5).forEach { assertEquals(5, it.toSet().size, "any five running are all different: $it") }
@@ -196,6 +196,28 @@ class CharacterTest {
         m.flourish("near", "turn-left", Any(), emptyList(), both)
         assertEquals("flourish-scold-x", m.flourish("far", null, null, listOf("speeding"), both)!!.name)
         assertEquals("flourish-scold-x", m.flourish("far", null, null, listOf("speeding"), both, now = 100.0)!!.name, "a pool of one repeats")
+    }
+
+    @Test
+    fun `the memory works on the phrase - two takes of one line are the same words`() {
+        assertEquals("wild-offroute-what-the-hell", Character.phrase("wild-offroute-what-the-hell-6"))
+        assertEquals("flourish-start-its-show-time", Character.phrase("flourish-start-its-show-time-2"))
+        assertEquals("interject-cough", Character.phrase("interject-cough-2"))
+        // four phrases, three takes of one: no phrase within the last two, whatever the take
+        val pool = setOf("wild-offroute-what-the-hell", "wild-offroute-what-the-hell-4", "wild-offroute-what-the-hell-6",
+            "wild-offroute-no", "wild-offroute-haha", "wild-offroute-oh-no", "offroute")
+        val c = Character(Dice())
+        val heard = (1..12).map { Character.phrase(c.voiceFor("offroute", emptySet(), pool, null)) }
+        heard.windowed(3).forEach { assertEquals(3, it.toSet().size, "no phrase twice within three: $it") }
+        // a second flourish is never another take of the first's words
+        val takes = setOf("flourish-urgent-now", "flourish-urgent-now-2", "flourish-urgent-move")
+        // order, F1 rate, F2 rate; picks: F1 phrase "now", its take, F2 mood, F2 phrase
+        val f = Character(Dice(0.5, 0.0, 0.0, picks = listOf(1, 0, 0, 0)))
+        val core = VoiceLines.core("turn-left", "near", 150.0, "Turn left", null, true, setOf("dist-0.1mile", "turn-left"))!!
+        val after = f.arrange(core, emptyList(), "near", "turn-left", Any(), emptyList(), takes + setOf("dist-0.1mile", "turn-left"), emptySet()).after
+        assertEquals(2, after.size)
+        assertEquals("flourish-urgent-now", Character.phrase(after[0].name))
+        assertEquals("flourish-urgent-move", after[1].name, "not now + now-2: $after")
     }
 
     @Test

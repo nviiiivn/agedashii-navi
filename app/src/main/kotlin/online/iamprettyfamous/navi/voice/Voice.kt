@@ -299,9 +299,14 @@ object Voice {
      * A re-route the router refused, in words, then her "sorry" line - never
      * instead of the words, so none when the phone's voice cannot speak them.
      */
-    fun refusal(reason: String) {
-        val sorry = if (_state.value.ready) character.sorry(clipNames()) else null
-        play(VoiceLines.refusal(reason) + listOfNotNull(sorry), "refused: $reason${sorry?.let { " | ${it.name}" } ?: ""}")
+    fun refusal(reason: String, held: List<String> = emptyList()) {
+        val have = clipNames()
+        val hers = herNames()
+        val slots = character.slots(have, hers)
+        // A held off-route line leads the SAME playlist, so the words cannot cut it.
+        val lead = held.flatMap { VoiceLines.situation(it, slots) { s -> character.voiceFor(s, hers, have) } }
+        val sorry = if (_state.value.ready) character.sorry(have) else null
+        play(lead + VoiceLines.refusal(reason) + listOfNotNull(sorry), "${held.joinToString(", ").ifEmpty { "" }} refused: $reason${sorry?.let { " | ${it.name}" } ?: ""}".trim())
     }
 
     @Volatile private var opened = false
