@@ -10,6 +10,7 @@ import online.iamprettyfamous.navi.core.geo.Geo
 import online.iamprettyfamous.navi.core.geo.LatLon
 import online.iamprettyfamous.navi.core.geo.RouteLine
 import online.iamprettyfamous.navi.core.guidance.Follower
+import online.iamprettyfamous.navi.core.guidance.Guidance
 import online.iamprettyfamous.navi.core.guidance.RerouteGate
 import online.iamprettyfamous.navi.core.guidance.Status
 import online.iamprettyfamous.navi.core.routing.Arrival
@@ -154,6 +155,14 @@ object Navigator {
         }
     }
 
+    /** True when the next maneuver's "now" is under [Guidance.NOW_SOON_S] away, or already here. */
+    private fun nowSoon(metres: Double?, speed: Double?): Boolean {
+        if (metres == null) return false
+        val nowAt = Guidance.promptPoints(speed)["now"] ?: 0.0
+        if (metres <= nowAt) return true
+        return speed != null && speed > 0.0 && (metres - nowAt) / speed < Guidance.NOW_SOON_S
+    }
+
     /** An off-route/re-routing line waiting on the re-route asked on its fix. */
     private class Held(val cues: List<String>, val status: Status, val token: Int)
 
@@ -246,7 +255,9 @@ object Navigator {
             // The held off-route line plays only if the new route does not open
             // with a "now": that turn would cut it to a fragment.
             if (!first) {
-                if (status?.band == "now") {
+                // A "now" here, or one due within NOW_SOON_S (the Follower holds a
+                // near back for it), would cut the line: minion 3's Flet reading.
+                if (status != null && (status.band == "now" || nowSoon(status.turnInM, speedMs))) {
                     if (held != null) Log.i(TAG, "off-route line dropped: the new route starts with a turn here")
                     held = null
                 } else {
