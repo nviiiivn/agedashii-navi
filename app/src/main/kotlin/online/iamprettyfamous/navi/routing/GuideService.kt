@@ -14,6 +14,16 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 import online.iamprettyfamous.navi.MainActivity
 import online.iamprettyfamous.navi.record.Telemetry
 
@@ -25,12 +35,17 @@ import online.iamprettyfamous.navi.record.Telemetry
  * locking the screen without recording released the GPS, and the voice fell
  * silent mid-route.
  *
- * Started when a route begins, stopped when it ends; its notification says
+ * Started when a route begins, stopped when it ends - and on arrival, by
+ * itself: with the screen locked nothing else would stop it, and the GPS and
+ * the notification ran on after she parked (58 fixes arrived=true in 62 s,
+ * emulator ride v6) until she found the End button. Its notification says
  * where to, and ends the route from there too.
  */
 class GuideService : Service() {
     private var wake: PowerManager.WakeLock? = null
     private var holding = false
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private var watch: Job? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -58,6 +73,19 @@ class GuideService : Service() {
             return
         }
         running = true
+        // Arrived: the arrival lines get their time, then the GPS goes. A new
+        // route before then clears `arrived` and cancels the wait; a route
+        // ended meanwhile ends it now.
+        if (watch == null) watch = scope.launch {
+            Navigator.nav.map { if (it.route == null) ENDED else if (it.status?.arrived == true) ARRIVED else GUIDING }
+                .distinctUntilChanged()
+                .collectLatest { state ->
+                    if (state == GUIDING) return@collectLatest
+                    if (state == ARRIVED) delay(ARRIVED_GRACE_MS)
+                    Log.i(TAG, if (state == ARRIVED) "arrived: letting the GPS go" else "route ended")
+                    done()
+                }
+        }
         if (holding) return
         holding = true
         Telemetry.acquire(this, "route")
@@ -75,11 +103,14 @@ class GuideService : Service() {
         wake?.takeIf { it.isHeld }?.release()
         wake = null
         running = false
+        watch?.cancel()
+        watch = null
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
 
     override fun onDestroy() {
+        scope.cancel()
         if (holding) Telemetry.release("route")
         holding = false
         wake?.takeIf { it.isHeld }?.release()
@@ -116,6 +147,11 @@ class GuideService : Service() {
         private const val ACTION_STOP = "online.iamprettyfamous.navi.routing.STOP"
         private const val EXTRA_TO = "to"
         private const val MAX_ROUTE_MS = 12L * 60 * 60 * 1000
+        /** After arriving, long enough for "arrived" and the line after it to play out. */
+        private const val ARRIVED_GRACE_MS = 30_000L
+        private const val GUIDING = 0
+        private const val ARRIVED = 1
+        private const val ENDED = 2
 
         @Volatile private var running = false
 
