@@ -194,7 +194,7 @@ class VoiceLinesTest {
         val cues = VoiceLines.Cues()
         val dest = Any()
         cues.update(true, false, dest, false, false, 0.0)
-        assertEquals(listOf("offroute", "rerouting"), cues.update(true, true, dest, true, false, 10.0), "the first always, at once")
+        assertEquals(listOf("offroute"), cues.update(true, true, dest, true, false, 10.0), "the first always, at once - one line, not two")
         assertEquals(emptyList(), cues.update(true, false, dest, false, false, 11.0), "the new route puts her on it")
         assertEquals(emptyList(), cues.update(true, true, dest, false, false, 17.5), "off it again: held")
         assertEquals(emptyList(), cues.update(true, true, dest, true, false, 22.6))
@@ -204,7 +204,7 @@ class VoiceLinesTest {
         assertEquals(listOf("offroute"), cues.update(true, true, dest, false, false, 41.0), "30 s after the last line, one more")
         cues.update(true, false, dest, false, false, 45.0)
         cues.update(true, false, dest, false, false, 76.0)
-        assertEquals(listOf("offroute", "rerouting"), cues.update(true, true, dest, true, false, 80.0), "back on route 31 s: a new spell speaks at once")
+        assertEquals(listOf("offroute"), cues.update(true, true, dest, true, false, 80.0), "back on route 31 s: a new spell speaks at once")
     }
 
     @Test
@@ -249,7 +249,7 @@ class VoiceLinesTest {
         val dest = Any()
         assertEquals(listOf("start"), cues.update(true, false, dest, false, false, 0.0))
         assertEquals(emptyList(), cues.update(true, false, dest, false, false, 1.0), "the same destination is no new start")
-        assertEquals(listOf("offroute", "rerouting"), cues.update(true, true, dest, true, false, 2.0))
+        assertEquals(listOf("offroute"), cues.update(true, true, dest, true, false, 2.0), "off route OR re-routing, never both")
         assertEquals(emptyList(), cues.update(true, true, dest, true, false, 3.0), "once per off-route spell")
         assertEquals(emptyList(), cues.update(true, true, dest, true, false, 15.0))
         assertEquals(listOf("speeding"), cues.update(true, false, dest, false, true, 20.0))

@@ -188,12 +188,12 @@ class CharacterTest {
         heard.windowed(5).forEach { assertEquals(5, it.toSet().size, "any five running are all different: $it") }
         val four = setOf("flourish-urgent-a", "flourish-urgent-b", "flourish-urgent-c", "flourish-urgent-d")
         val u = Character(Dice())
-        val lines = (1..12).map { u.flourish("near", "turn-left", Any(), emptyList(), four)!!.name }
+        val lines = (1..12).map { u.flourish("now", "turn-left", Any(), emptyList(), four)!!.name }
         lines.windowed(3).forEach { assertEquals(3, it.toSet().size, "four lines: the last two are avoided: $it") }
         // memory is per pool: an urgent line does not use up a scold line
         val both = four + "flourish-scold-x"
         val m = Character(Dice())
-        m.flourish("near", "turn-left", Any(), emptyList(), both)
+        m.flourish("now", "turn-left", Any(), emptyList(), both)
         assertEquals("flourish-scold-x", m.flourish("far", null, null, listOf("speeding"), both)!!.name)
         assertEquals("flourish-scold-x", m.flourish("far", null, null, listOf("speeding"), both, now = 100.0)!!.name, "a pool of one repeats")
     }
@@ -210,14 +210,14 @@ class CharacterTest {
         val heard = (1..12).map { Character.phrase(c.voiceFor("offroute", emptySet(), pool, null)) }
         heard.windowed(3).forEach { assertEquals(3, it.toSet().size, "no phrase twice within three: $it") }
         // a second flourish is never another take of the first's words
-        val takes = setOf("flourish-urgent-now", "flourish-urgent-now-2", "flourish-urgent-move")
-        // order, F1 rate, F2 rate; picks: F1 phrase "now", its take, F2 mood, F2 phrase
+        val takes = setOf("flourish-angry-no", "flourish-angry-no-2", "flourish-angry-haha")
+        // order, F1 rate, F2 rate; picks: F1 phrase "no", its take, F2 mood, F2 phrase
         val f = Character(Dice(0.5, 0.0, 0.0, picks = listOf(1, 0, 0, 0)))
         val core = VoiceLines.core("turn-left", "near", 150.0, "Turn left", null, true, setOf("dist-0.1mile", "turn-left"))!!
-        val after = f.arrange(core, emptyList(), "near", "turn-left", Any(), emptyList(), takes + setOf("dist-0.1mile", "turn-left"), emptySet()).after
+        val after = f.arrange(core, emptyList(), "near", "turn-left", Any(), listOf("offroute"), takes + setOf("dist-0.1mile", "turn-left"), emptySet()).after
         assertEquals(2, after.size)
-        assertEquals("flourish-urgent-now", Character.phrase(after[0].name))
-        assertEquals("flourish-urgent-move", after[1].name, "not now + now-2: $after")
+        assertEquals("flourish-angry-no", Character.phrase(after[0].name))
+        assertEquals("flourish-angry-haha", after[1].name, "not no + no-2: $after")
     }
 
     @Test
@@ -270,9 +270,9 @@ class CharacterTest {
     }
 
     @Test
-    fun `urgent on near and now, never far - AGEDASHII's ruling`() {
+    fun `urgent on now only - time words are true only at the corner - AGEDASHII's ruling`() {
         assertNull(Character(Dice()).flourish("far", "turn-left", maneuver, emptyList(), pack), "half a mile out, NOW! is dangerous")
-        assertEquals("urgent", Character.mood(Character(Dice()).flourish("near", "turn-left", maneuver, emptyList(), pack)!!.name))
+        assertNull(Character(Dice()).flourish("near", "turn-left", maneuver, emptyList(), pack), "RIGHT NOW at 900 ft is false at 34 mph")
         assertEquals("urgent", Character.mood(Character(Dice()).flourish("now", "turn-left", maneuver, emptyList(), pack)!!.name))
         assertEquals("start", Character.mood(Character(Dice()).flourish("far", "turn-left", maneuver, listOf("start"), pack)!!.name), "far takes another mood")
         assertNull(Character(Dice()).flourish("now", "turn-left", maneuver, listOf("offroute"), pack.filter { Character.mood(it) != "urgent" }.toSet()), "on now, urgent or nothing")
@@ -321,7 +321,7 @@ class CharacterTest {
         assertEquals("angry", Character.mood(c.flourish("far", "turn-left", Any(), all, pack)!!.name))
         assertEquals("scold", Character.mood(c.flourish("far", "turn-left", Any(), listOf("start", "speeding"), pack)!!.name))
         assertEquals("start", Character.mood(c.flourish("far", "turn-left", Any(), listOf("start"), pack)!!.name))
-        assertEquals("urgent", Character.mood(c.flourish("near", "turn-left", Any(), emptyList(), pack)!!.name))
+        assertEquals("urgent", Character.mood(c.flourish("now", "turn-left", Any(), emptyList(), pack)!!.name))
         val noAngry = pack.filter { Character.mood(it) != "angry" }.toSet()
         assertEquals("scold", Character.mood(c.flourish("far", null, null, all, noAngry)!!.name), "an empty pool falls to the next mood")
         assertNull(c.flourish("far", null, null, emptyList(), pack), "nothing to say, nothing added")
@@ -330,8 +330,8 @@ class CharacterTest {
     @Test
     fun `each mood's rate decides, one named constant each`() {
         assertEquals(0.25, Character.RATE.getValue("urgent"))
-        assertNull(Character(Dice(0.25)).flourish("near", "turn-left", maneuver, emptyList(), pack))
-        assertNotNull(Character(Dice(0.24)).flourish("near", "turn-left", maneuver, emptyList(), pack))
+        assertNull(Character(Dice(0.25)).flourish("now", "turn-left", maneuver, emptyList(), pack))
+        assertNotNull(Character(Dice(0.24)).flourish("now", "turn-left", maneuver, emptyList(), pack))
         assertNotNull(Character(Dice(0.99)).flourish("now", "arrive", maneuver, emptyList(), pack), "arrival is every time")
         assertNull(Character(Dice(0.5)).flourish("far", null, null, listOf("offroute"), pack))
     }
@@ -339,10 +339,10 @@ class CharacterTest {
     @Test
     fun `one per maneuver across its prompts, and never the same line twice running`() {
         val c = Character(Dice(picks = listOf(0, 0, 0)))
-        val a = c.flourish("near", "turn-left", maneuver, emptyList(), pack)
+        val a = c.flourish("now", "turn-left", maneuver, emptyList(), pack)
         assertNotNull(a)
         assertNull(c.flourish("now", "turn-left", maneuver, emptyList(), pack), "that maneuver has had its line")
-        val b = c.flourish("near", "turn-right", Any(), emptyList(), pack)
+        val b = c.flourish("now", "turn-right", Any(), emptyList(), pack)
         assertNotNull(b)
         assertNotEquals(a.name, b.name)
     }
@@ -439,23 +439,23 @@ class CharacterTest {
     }
 
     @Test
-    fun `two flourishes - never urgent on far, one at most on now`() {
-        val have = plain + setOf("flourish-urgent-do-it-now", "flourish-urgent-right-now", "flourish-angry-damn-it")
-        // order, (no cough: rolls high), F1 rate, F1 pick, F2 rate, F2 mood, F2 pick
-        val c = Character(Dice(0.5, 0.99, 0.0, 0.0, picks = listOf(0, 0, 0)))
-        val near = c.arrange(core("turn-left", "near", ft(500.0), "Turn left", have), emptyList(), "near", "turn-left", Any(), emptyList(), have, emptySet())
-        assertEquals(2, near.after.size, "DO IT NOW + RIGHT NOW")
-        assertTrue(near.after.all { Character.mood(it.name) == "urgent" }, "a correct turn is never sworn at: $near")
-        // on a mistake the second line may be angry: off route with a turn on the same fix
-        val lost = Character(Dice(0.5, 0.99, 0.0, 0.0, picks = listOf(0, 1, 0)))
-        val off = lost.arrange(core("turn-left", "near", ft(500.0), "Turn left", have), emptyList(), "near", "turn-left", Any(), listOf("offroute"), have, emptySet())
-        assertTrue(off.after.any { Character.mood(it.name) == "angry" }, "a mistake earns it: $off")
-        assertTrue(near.after.all { it.soft } && near.after[0].name != near.after[1].name)
-        val far = Character(Dice(0.5, 0.99, 0.0, 0.0)).arrange(core("turn-left", "far", ft(2000.0), "Turn left", have), emptyList(), "far", "turn-left", Any(), emptyList(), have, emptySet())
-        assertEquals(emptyList(), far.after, "far: no urgent, and angry only after off route or on a near turn")
+    fun `two flourishes only on a mistake - none on a correct turn, one at most on now and on a start`() {
+        val have = plain + setOf(
+            "flourish-urgent-do-it-now", "flourish-urgent-right-now", "flourish-angry-damn-it", "flourish-angry-no",
+            "flourish-start-hello", "flourish-start-lets-go",
+        )
+        // rolls: order, cough (high: none), F1 rate, F2 rate
+        fun near(cues: List<String>, vararg rolls: Double) = Character(Dice(*rolls))
+            .arrange(core("turn-left", "near", ft(500.0), "Turn left", have), emptyList(), "near", "turn-left", Any(), cues, have, emptySet()).after
+        assertEquals(emptyList(), near(emptyList(), 0.5, 0.99, 0.0, 0.0), "a correct turn 20 s out: no RIGHT NOW, no abuse")
+        val lost = near(listOf("offroute"), 0.5, 0.99, 0.0, 0.0)
+        assertEquals(2, lost.size, "a mistake may earn two")
+        assertTrue(lost.all { Character.mood(it.name) == "angry" && it.soft } && lost[0].name != lost[1].name, "$lost")
+        assertEquals(1, near(listOf("start"), 0.5, 0.99, 0.0, 0.0).size, "the start line is not buried")
+        assertEquals(1, near(listOf("offroute"), 0.5, 0.99, 0.0, Character.P_SECOND).size)
         val now = Character(Dice(0.0, 0.0, 0.0)).arrange(core("turn-left", "now", null, "Turn left", have), emptyList(), "now", "turn-left", Any(), emptyList(), have, emptySet())
         assertEquals(1, now.after.size, "now: one at most")
-        assertEquals(1, Character(Dice(0.5, 0.99, 0.0, Character.P_SECOND)).arrange(core("turn-left", "near", ft(500.0), "Turn left", have), emptyList(), "near", "turn-left", Any(), emptyList(), have, emptySet()).after.size)
+        assertEquals("urgent", Character.mood(now.after[0].name), "DO IT NOW, where it is true")
     }
 
     @Test

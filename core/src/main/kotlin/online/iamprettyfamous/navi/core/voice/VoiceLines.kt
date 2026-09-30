@@ -360,6 +360,9 @@ object VoiceLines {
                 situation += "rerouting"
             }
             off = offRoute
+            // One line per spell edge: off route OR re-routing, never both in
+            // two voices (AGEDASHII) - the burst was made of these pairs.
+            if ("offroute" in situation) situation.remove("rerouting")
             if (situation.isNotEmpty()) {
                 // The first of a spell always speaks, at once; after that, one
                 // per SITUATION_EVERY_S while she stays lost (AGEDASHII's ruling).
