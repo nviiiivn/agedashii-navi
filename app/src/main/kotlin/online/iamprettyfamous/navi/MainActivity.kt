@@ -27,6 +27,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
+import online.iamprettyfamous.navi.core.telemetry.Physics
 import online.iamprettyfamous.navi.map.MapFiles
 import online.iamprettyfamous.navi.map.RideMapController
 import online.iamprettyfamous.navi.map.RideMapController.Problem
@@ -508,6 +510,20 @@ class MainActivity : ComponentActivity() {
                 pin = null
             }
         }
+        // A refused destination's card goes once she rides on: it stayed up
+        // through 110 s of riding north (emulator ride v7), over the map,
+        // waiting for a Try again she had plainly not wanted. Standing still,
+        // it waits for her.
+        LaunchedEffect(nav.failedFor) {
+            val at = nav.failedFor ?: return@LaunchedEffect
+            var from: LatLon? = null
+            Telemetry.fix.first { f ->
+                val here = f?.let { LatLon(it.latitude, it.longitude) } ?: return@first false
+                val start = from ?: here.also { from = it }
+                Physics.haversineM(start, here) > REFUSED_CARD_RIDDEN_M
+            }
+            if (pin == at) cancelPin()
+        }
         BackHandler(enabled = settingsOpen && !helpOpen) { settingsOpen = false }
         BackHandler(enabled = helpOpen) { helpOpen = false }
         BackHandler(enabled = !settingsOpen && pin != null && !whereToOpen) { cancelPin() }
@@ -712,6 +728,8 @@ class MainActivity : ComponentActivity() {
         )
         const val STALE_FIX_S = 10.0
         const val STOP_CONFIRM_MS = 3000L
+        /** Ridden this far from where a destination was refused, its card goes (m, ~650 ft). */
+        const val REFUSED_CARD_RIDDEN_M = 200.0
         /** The Flet app's "the bike is rolling": faster than a parked GPS wanders (m/s, ~5.6 mph). */
         const val ROLLING_MS = 2.5f
         const val STOPPED_MS = 1.0f
