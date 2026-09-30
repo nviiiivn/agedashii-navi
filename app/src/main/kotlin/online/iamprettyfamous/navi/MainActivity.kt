@@ -683,7 +683,8 @@ class MainActivity : ComponentActivity() {
         !Telemetry.hasGps(this) -> "This phone reports no GPS receiver"
         fixAge == null -> "Waiting for GPS"
         // The Flet app's own sentence (routing.START_OUTSIDE), so both apps say it alike.
-        outside -> "You are outside the offline map. Ride back into it, or find signal."
+        // No "or find signal": this app has no network permission and routes offline only.
+        outside -> "You are outside the offline map. Ride back into it."
         fixAge > STALE_FIX_S -> "GPS lost ${fixAge.toInt()} s ago"
         else -> null
     }

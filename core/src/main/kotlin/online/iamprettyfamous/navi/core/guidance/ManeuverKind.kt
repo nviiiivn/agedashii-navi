@@ -74,6 +74,24 @@ object ManeuverKind {
     }
 
     /**
+     * As [fromValhalla], but a ramp (17-19) takes its clip from Valhalla's own
+     * words, which follow the ramp's real angle: "Turn right to take the I 980
+     * East ramp" is a turn, and her "keep right" clip under it contradicted
+     * the words (minion 1's ride). "Take the ramp on the right" stays slight.
+     */
+    fun fromValhalla(type: Int?, instruction: String?): String? {
+        if (type !in 17..19 || instruction.isNullOrBlank()) return fromValhalla(type)
+        val words = instruction.trim().lowercase()
+        return when {
+            words.startsWith("turn sharp right") || words.startsWith("make a sharp right") -> SHARP_RIGHT
+            words.startsWith("turn sharp left") || words.startsWith("make a sharp left") -> SHARP_LEFT
+            words.startsWith("turn right") -> TURN_RIGHT
+            words.startsWith("turn left") -> TURN_LEFT
+            else -> fromValhalla(type)
+        }
+    }
+
+    /**
      * A turn by its angle - clockwise degrees from straight on, as Valhalla
      * measures turn_degree - in Valhalla 3.6.3's own bands (src/baldr/turn.cc,
      * make_turn_type_lut, read from the tag 2026-09-28): 0-10 and 350-359

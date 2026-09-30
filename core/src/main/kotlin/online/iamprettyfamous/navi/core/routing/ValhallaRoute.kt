@@ -55,7 +55,10 @@ object ValhallaRoute {
                     cumM = 0.0,
                     // Valhalla's own classification, so the clip she hears, the
                     // arrow and the words all come from one decision.
-                    kind = ManeuverKind.fromValhalla(m["type"]?.jsonPrimitive?.intOrNull),
+                    kind = ManeuverKind.fromValhalla(
+                        m["type"]?.jsonPrimitive?.intOrNull,
+                        m["instruction"]?.jsonPrimitive?.contentOrNull,
+                    ),
                 )
             }
         }

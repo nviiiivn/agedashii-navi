@@ -225,9 +225,9 @@ class Character(private val random: Random = Random.Default) {
 
     /**
      * A second flourish after [first], [P_SECOND] of the time: a mood picked
-     * evenly among those this moment allows (angry after off route or on a
-     * near turn - under the minute - scold when speeding, start at a start,
-     * urgent on near) that still has a line other than [first], then a line
+     * evenly among those this moment allows (angry after off route or
+     * re-routing - under the minute - scold when speeding, start at a start,
+     * urgent on a near turn) that still has a line other than [first], then a line
      * from that mood's pool - never [first], whatever the pool's memory says.
      */
     private fun second(first: Item.Clip, band: String?, kind: String?, maneuver: Any?, cues: List<String>, have: Set<String>, now: Double): Item.Clip? {
@@ -237,10 +237,10 @@ class Character(private val random: Random = Random.Default) {
         if (angryOk && ("offroute" in cues || "rerouting" in cues)) moods += "angry"
         if ("speeding" in cues) moods += "scold"
         if ("start" in cues) moods += "start"
-        if (maneuver != null && band == "near") {
-            moods += "urgent"
-            if (angryOk) moods += "angry"
-        }
+        // A correct turn gets urgency or nothing - never abuse. Angry and scold
+        // belong to her MISTAKES (off route, re-routing, speeding) only
+        // (AGEDASHII, after "In 900 ft, Bear left onto Ascot Drive" + "GO TO HELL").
+        if (maneuver != null && band == "near") moods += "urgent"
         val open = moods.filter { m -> have.any { mood(it) == m && it != first.name } }
         if (open.isEmpty()) return null
         val mood = open[random.nextInt(open.size)]

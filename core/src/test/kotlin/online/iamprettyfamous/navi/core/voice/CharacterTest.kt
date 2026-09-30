@@ -442,11 +442,14 @@ class CharacterTest {
     fun `two flourishes - never urgent on far, one at most on now`() {
         val have = plain + setOf("flourish-urgent-do-it-now", "flourish-urgent-right-now", "flourish-angry-damn-it")
         // order, (no cough: rolls high), F1 rate, F1 pick, F2 rate, F2 mood, F2 pick
-        val c = Character(Dice(0.5, 0.99, 0.0, 0.0, picks = listOf(0, 1, 0)))
+        val c = Character(Dice(0.5, 0.99, 0.0, 0.0, picks = listOf(0, 0, 0)))
         val near = c.arrange(core("turn-left", "near", ft(500.0), "Turn left", have), emptyList(), "near", "turn-left", Any(), emptyList(), have, emptySet())
-        assertEquals(2, near.after.size, "DO IT NOW + DAMN IT")
-        assertEquals("urgent", Character.mood(near.after[0].name))
-        assertEquals("angry", Character.mood(near.after[1].name), "angry on a near turn, as a second line")
+        assertEquals(2, near.after.size, "DO IT NOW + RIGHT NOW")
+        assertTrue(near.after.all { Character.mood(it.name) == "urgent" }, "a correct turn is never sworn at: $near")
+        // on a mistake the second line may be angry: off route with a turn on the same fix
+        val lost = Character(Dice(0.5, 0.99, 0.0, 0.0, picks = listOf(0, 1, 0)))
+        val off = lost.arrange(core("turn-left", "near", ft(500.0), "Turn left", have), emptyList(), "near", "turn-left", Any(), listOf("offroute"), have, emptySet())
+        assertTrue(off.after.any { Character.mood(it.name) == "angry" }, "a mistake earns it: $off")
         assertTrue(near.after.all { it.soft } && near.after[0].name != near.after[1].name)
         val far = Character(Dice(0.5, 0.99, 0.0, 0.0)).arrange(core("turn-left", "far", ft(2000.0), "Turn left", have), emptyList(), "far", "turn-left", Any(), emptyList(), have, emptySet())
         assertEquals(emptyList(), far.after, "far: no urgent, and angry only after off route or on a near turn")

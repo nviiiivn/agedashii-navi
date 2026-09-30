@@ -92,4 +92,13 @@ class ManeuverKindTest {
         assertNull(quiet.band)
         assertEquals("slight-right", quiet.kind)
     }
+
+    @Test
+    fun `a ramp's clip follows Valhalla's words, so a turn onto a ramp is a turn`() {
+        assertEquals(ManeuverKind.TURN_RIGHT, ManeuverKind.fromValhalla(18, "Turn right to take the I 980 East ramp."))
+        assertEquals(ManeuverKind.TURN_LEFT, ManeuverKind.fromValhalla(19, "Turn left to take the ramp toward Oakland."))
+        assertEquals(ManeuverKind.SLIGHT_RIGHT, ManeuverKind.fromValhalla(18, "Take the I 580 East ramp on the right."))
+        assertEquals(ManeuverKind.SLIGHT_LEFT, ManeuverKind.fromValhalla(19, null))
+        assertEquals(ManeuverKind.EXIT, ManeuverKind.fromValhalla(20, "Turn right to take exit 5."), "only ramps read the words")
+    }
 }
