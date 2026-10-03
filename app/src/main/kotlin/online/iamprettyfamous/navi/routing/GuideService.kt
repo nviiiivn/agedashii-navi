@@ -98,7 +98,10 @@ class GuideService : Service() {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         return NotificationCompat.Builder(this, CHANNEL)
             .setSmallIcon(android.R.drawable.ic_menu_directions)
-            .setContentTitle("Navi")
+            // "xnav.k", not "Navi": both apps install at once and both post an
+            // ongoing notification while they hold her location. Sharing a
+            // title means she cannot tell which one is running.
+            .setContentTitle("xnav.k")
             .setContentText("Guiding you to $to")
             .setOngoing(true)
             .setOnlyAlertOnce(true)

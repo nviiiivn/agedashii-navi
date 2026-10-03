@@ -19,8 +19,14 @@ android {
         applicationId = "online.iamprettyfamous.agedashii.navikt"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        // Same scheme as the Flet app (agedashii_navi/version.py): YYMMDDnn,
+        // so 26100301 is the first build on 2026-10-03. It only ever goes up,
+        // it cannot collide, and it says when a build was made without having
+        // to look anything up. This sat at 1 through every build so far, which
+        // meant every APK she ever installed called itself version 1, with no
+        // way to tell from the phone which one she had.
+        versionCode = 26100301
+        versionName = "0.2.0"
         // Both phones are arm64; x86_64 is only for the emulator on Tower, and
         // -PnaviAbis=arm64-v8a leaves its 22 MB out of the APK she downloads.
         ndk {

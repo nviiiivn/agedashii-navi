@@ -27,8 +27,13 @@
         android:name="android.permission.INTERNET"
         tools:node="remove" />
 
+    <!-- Hers: "i changed my mind. Call one xnav.k for kotlin and the other
+         xnav.f for flet". Both install at once, so the launcher label is the
+         only thing telling them apart there, and in the notification that
+         says which one is holding her location. The Flet side's counterpart
+         is agedashii_navi/version.py NAME = "xnav.f". -->
     <application
-        android:label="Navi K"
+        android:label="xnav.k"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher"
         android:theme="@android:style/Theme.DeviceDefault.NoActionBar">

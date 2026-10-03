@@ -207,7 +207,10 @@ class RideService : Service() {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         return NotificationCompat.Builder(this, CHANNEL)
             .setSmallIcon(android.R.drawable.ic_menu_mylocation)
-            .setContentTitle("Navi")
+            // "xnav.k", not "Navi" - see the launcher label in the manifest.
+            // This is the recording notification, so it is the one that tells
+            // her which app is holding the GPS while the screen is off.
+            .setContentTitle("xnav.k")
             .setContentText(text)
             .setOngoing(true)
             .setOnlyAlertOnce(true)

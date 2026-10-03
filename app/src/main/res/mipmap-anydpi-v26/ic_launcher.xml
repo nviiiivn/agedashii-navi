@@ -1,8 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Without this the launcher showed Android's default robot. minSdk is 26,
-     so an adaptive icon covers every phone this installs on. -->
+     so an adaptive icon covers every phone this installs on.
+
+     The foreground is HER artwork - the yellow Ninja badge, the same master
+     the Flet app ships (assets/icons/navi-ex-*). Hers: "RIGHT SO FIX IT SO
+     ITS MY FUCKING LOGOS". It used to be bike_yellow, which is the map
+     marker: a Material Icons "two_wheeler" glyph, i.e. a stock motorcycle,
+     not her bike. Good enough to find herself on a map, wrong as the thing
+     with her name under it on the home screen.
+
+     The master used is the MASKABLE one, drawn inside the safe circle
+     already, so it maps to the whole 108dp layer with no further inset -
+     insetting it twice would leave her bike a speck in the middle.
+
+     monochrome stays the vector: a themed icon is recoloured to a single
+     tint, which would turn a photographic badge into a yellow smear. The
+     glyph silhouette is the right shape for that one job. -->
 <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
     <background android:drawable="@drawable/ic_launcher_background" />
-    <foreground android:drawable="@drawable/ic_launcher_foreground" />
+    <foreground android:drawable="@mipmap/ic_launcher_art" />
     <monochrome android:drawable="@drawable/ic_launcher_foreground" />
 </adaptive-icon>
