@@ -1,7 +1,7 @@
 """Golden outputs from the Python theme, type scale and gauges, for phase 7.
 
     PYTHONPATH=<NVII-DASH>/apps/navi:<NVII-DASH>/packages/agedashii-washi \
-        /home/nvii/agedashii/venv/bin/python tools/golden_dash.py
+        /home/nvii/projects/agedashii/venv/bin/python tools/golden_dash.py
 
 Writes core/src/test/resources/golden/dash.json. The palettes and constants
 are read straight off theme.py, ui.py and gauges.py. Each gauge is BUILT by the
