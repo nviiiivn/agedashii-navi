@@ -32,10 +32,10 @@ same text the Python produced.
 the Kotlin tests replay the same inputs and compare. Re-run all five after any change
 to the Python, with the flet venv:
 
-    N=/home/nvii/dashboredapp-server/NVII-DASH
+    N=/home/nvii/agedashii/src/NVII-DASH
     for g in golden_py golden_rpm golden_route golden_places golden_telemetry; do
       PYTHONPATH=$N/apps/navi:$N/packages/agedashii-washi \
-        /home/nvii/venvs/flet/bin/python tools/$g.py
+        /home/nvii/agedashii/venv/bin/python tools/$g.py
     done
 
 What they pin: 946 values through round/repr/format; 15 exhaust windows (hz, rpm,
