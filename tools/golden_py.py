@@ -1,6 +1,6 @@
 """Python's own rounding and float printing, for core/Py.kt to match.
 
-    /home/nvii/agedashii/venv/bin/python tools/golden_py.py
+    /home/nvii/projects/agedashii/venv/bin/python tools/golden_py.py
 
 Writes core/src/test/resources/golden/py.json. Each value is stored as its
 IEEE-754 bits in hex, so no JSON parser can round it on the way in.
