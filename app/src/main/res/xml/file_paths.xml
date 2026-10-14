@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- The downloaded update lives in the app's external cache; Android's installer reads it through this. -->
+    <external-cache-path name="cache" path="." />
+    <cache-path name="icache" path="." />
+</paths>

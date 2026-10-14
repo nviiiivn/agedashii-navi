@@ -1,7 +1,7 @@
 """Golden outputs from the Python route maths and turn-by-turn follower.
 
     PYTHONPATH=<NVII-DASH>/apps/navi:<NVII-DASH>/packages/agedashii-washi \
-        /home/nvii/projects/agedashii/venv/bin/python tools/golden_route.py
+        /home/nvii/venvs/flet/bin/python tools/golden_route.py
 
 Writes core/src/test/resources/golden/route.json: a winding route, every
 position asked about, and what routing.progress / next_maneuver / remaining and

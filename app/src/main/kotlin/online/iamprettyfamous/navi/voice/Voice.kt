@@ -16,6 +16,7 @@ import android.util.Log
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import online.iamprettyfamous.navi.core.guidance.Status
+import online.iamprettyfamous.navi.core.voice.Character
 import online.iamprettyfamous.navi.core.voice.VoiceLines
 import online.iamprettyfamous.navi.core.voice.VoiceLines.Item
 import java.io.File
@@ -37,6 +38,8 @@ import java.util.Locale
  * - Her recorded lines come first ([prompt], VoiceLines): a prompt is a
  *   sequence of her clips and the phone's words, played as ONE utterance under
  *   one focus hold, and a clip that will not play is replaced by its own words.
+ * - Her character ([character]): wild lines per slot, a flourish LAST, a rare
+ *   cough in the join. Those two are soft: any newer prompt cuts them at once.
  */
 object Voice {
     private const val TAG = "NaviVoice"
@@ -85,6 +88,13 @@ object Voice {
     /** A prompt held while the voice starts or is checked, and when it came. */
     private class Pending(val items: List<Item>, val label: String, val at: Long)
 
+    /**
+     * A newer prompt that came while one was playing: it starts when the item
+     * now playing ends, replacing the rest of that prompt - never cutting a
+     * word off. Only the newest waits; a "now" prompt does not wait at all.
+     */
+    private var queued: Pending? = null
+
     /** What the current prompt plays, one item after another, and which is playing. */
     private var sequence: List<Item> = emptyList()
     private var step = 0
@@ -95,6 +105,9 @@ object Voice {
 
     /** Her switch for the street name after her own line: off by default, or a robot finishes her joke. */
     @Volatile var streets = false
+
+    /** Wild lines, flourishes and the cough, with her two switches (Settings > Your recorded voice). */
+    val character = Character()
 
     @Volatile private var speakingNow = false
     @Volatile private var quietUntil = 0L
@@ -249,11 +262,87 @@ object Voice {
         val say = status.say
         if (say == null && cues.isEmpty()) return
         val have = clipNames()
-        val items = cues.flatMap { VoiceLines.situation(it, have) } + (say?.let {
-            VoiceLines.playlist(it, status.kind, status.band, status.turnInM, status.instruction, status.street, imperial, have, streets)
-        } ?: emptyList())
-        play(items, listOfNotNull(cues.joinToString(", ").ifEmpty { null }, say).joinToString(" | "))
+        val hers = herNames()
+        val slots = character.slots(have, hers)
+        val choose = { slot: String -> character.voiceFor(slot, hers, have, status.band) }
+        val lines = cues.flatMap { VoiceLines.situation(it, slots, choose) }
+        val core = say?.let {
+            VoiceLines.core(status.kind, status.band, status.turnInM, status.instruction, status.street, imperial, slots, streets, choose)
+        }
+        val whole = if (say != null && core == null) listOf(Item.Speak(say)) else emptyList()
+        // The maneuver right after, too close for a warning of its own: "and then turn left".
+        val then = status.then?.takeIf { say != null && status.band == "now" }
+        val andThen = then?.let { VoiceLines.andThen(it.kind, it.instruction, imperial, slots, choose) } ?: emptyList()
+        // Her character arranges the instruction's pieces and adds up to two
+        // flourishes, always after it; the distance and direction stay whole.
+        val arranged = character.arrange(
+            core, whole, status.band, status.kind, if (say != null) status.maneuver else null, cues, have, hers,
+            now = SystemClock.elapsedRealtime() / 1000.0,
+            flourishes = andThen.isEmpty(),
+        )
+        // The turn she is at plays FIRST and cuts in at once; anything else
+        // waits for the word being said to finish (the Flet app's rule).
+        val now = status.band == "now"
+        val turn = arranged.turn + andThen
+        play(
+            (if (now) turn + lines else lines + turn) + arranged.after,
+            listOfNotNull(
+                cues.joinToString(", ").ifEmpty { null }, say,
+                turn.joinToString(" ") { (it as? Item.Clip)?.name ?: "~" }.takeIf { turn.isNotEmpty() },
+                arranged.after.joinToString(" + ") { it.name }.ifEmpty { null },
+            ).joinToString(" | "),
+            urgent = now,
+        )
     }
+
+    /**
+     * A re-route the router refused, in words, then her "sorry" line - never
+     * instead of the words, so none when the phone's voice cannot speak them.
+     */
+    fun refusal(reason: String, held: List<String> = emptyList()) {
+        val have = clipNames()
+        val hers = herNames()
+        val slots = character.slots(have, hers)
+        // A held off-route line leads the SAME playlist, so the words cannot cut it.
+        val lead = held.flatMap { VoiceLines.situation(it, slots) { s -> character.voiceFor(s, hers, have) } }
+        val sorry = if (_state.value.ready) character.sorry(have) else null
+        play(lead + VoiceLines.refusal(reason) + listOfNotNull(sorry), "${held.joinToString(", ").ifEmpty { "" }} refused: $reason${sorry?.let { " | ${it.name}" } ?: ""}".trim())
+    }
+
+    /**
+     * "Hasta la vista, baby", on the way out: she stopped the recording, or quit.
+     * Her rule, 2026-10-12. Nothing else in the app plays this mood.
+     */
+    fun farewell() {
+        val have = clipNames()
+        val line = character.farewell(have) ?: return
+        play(listOf(line), "farewell | ${line.name}")
+    }
+
+    @Volatile private var opened = false
+
+    /**
+     * Her line when the app opens, once per process (a cold launch, not a
+     * rotation or a return from Settings): her "open", else a wild one with
+     * Character lines on, else the built-in, else nothing. Never over a prompt.
+     */
+    fun opening() {
+        if (opened) return
+        opened = true
+        val have = clipNames()
+        val hers = herNames()
+        val items = VoiceLines.situation("open", character.slots(have, hers)) { character.voiceFor(it, hers, have) }
+        if (items.isNotEmpty()) play(items, "open", idleOnly = true)
+    }
+
+    /** A tap outside the ride's controls (opening Where to, picking a place): rarely a line, never over a prompt. */
+    fun tap(what: String) {
+        val line = character.tap(clipNames()) ?: return
+        play(listOf(line), "tap: $what | ${line.name}", idleOnly = true)
+    }
+
+    /** The names she imported herself: they win over any wild line for their slot. */
+    private fun herNames(): Set<String> = if (::app.isInitialized) VoiceClips.imported(app).keys else emptySet()
 
     /** Her clips' names, or none before the engine started. Any thread: a directory listing. */
     fun clipNames(): Set<String> = if (::app.isInitialized) VoiceClips.have(app) else emptySet()
@@ -264,10 +353,10 @@ object Voice {
      * unless every item is her clip, which needs no engine. [preview] plays even
      * with spoken turns off.
      */
-    fun play(items: List<Item>, label: String, preview: Boolean = false) {
+    fun play(items: List<Item>, label: String, preview: Boolean = false, urgent: Boolean = preview, idleOnly: Boolean = false) {
         main.post {
             // A preview is her testing a file in Settings: it plays whether or not
-            // spoken turns are on for the ride.
+            // spoken turns are on for the ride, and a new tap cuts in at once.
             if ((!enabled && !preview) || items.isEmpty()) {
                 if (items.isNotEmpty()) Log.i(TAG, "not said (voice off): $label")
                 return@post
@@ -280,17 +369,36 @@ object Voice {
                 Log.i(TAG, "not said yet ($why): $label")
                 return@post
             }
+            if (idleOnly && current != null) {
+                Log.i(TAG, "not said (something is playing): $label")
+                return@post
+            }
+            // A flourish or a cough is cut at once: it must never be what is
+            // still playing when an instruction needs to speak.
+            val soft = (sequence.getOrNull(step) as? Item.Clip)?.soft == true
+            if (current != null && !urgent && !soft) {
+                // Never cut a word off: this starts when the current item ends.
+                queued = Pending(items, label, SystemClock.elapsedRealtime())
+                Log.i(TAG, "after this item: $label")
+                return@post
+            }
             stopCurrent()
-            val id = "p${++seq}"
-            current = id
-            sequence = items
-            step = 0
-            speakingNow = true
-            holdFocus()
-            _state.value = _state.value.copy(speaking = true, last = label, failed = "")
-            Log.i(TAG, "say: $label")
-            playStep(id)
+            queued = null
+            begin(items, label)
         }
+    }
+
+    /** Main thread: start [items] as the current utterance. Focus is kept across a hand-over. */
+    private fun begin(items: List<Item>, label: String) {
+        val id = "p${++seq}"
+        current = id
+        sequence = items
+        step = 0
+        speakingNow = true
+        holdFocus()
+        _state.value = _state.value.copy(speaking = true, last = label, failed = "")
+        Log.i(TAG, "say: $label")
+        playStep(id)
     }
 
     /** Main thread. The next item of [sequence], or the end of the utterance. */
@@ -310,13 +418,16 @@ object Voice {
     }
 
     private fun playClip(id: String, item: Item.Clip) {
-        val file = VoiceClips.clips(app)[item.name]
-        if (file == null) return fallback(id, item, "gone")
+        val source = VoiceClips.sources(app)[item.name] ?: return fallback(id, item, "gone")
         val at = step
         val mp = MediaPlayer()
         try {
             mp.setAudioAttributes(attributes)
-            mp.setDataSource(file.path)
+            when (source) {
+                is VoiceClips.Source.Imported -> mp.setDataSource(source.file.path)
+                // Straight from the APK: mp3 assets are stored uncompressed, so they open as a file descriptor.
+                is VoiceClips.Source.BuiltIn -> app.assets.openFd(source.asset).use { mp.setDataSource(it.fileDescriptor, it.startOffset, it.length) }
+            }
             mp.setOnCompletionListener { main.post { if (id == current && step == at) advance(id) } }
             mp.setOnErrorListener { _, what, extra ->
                 main.post { if (id == current && step == at) fallback(id, item, "error $what/$extra") }
@@ -325,7 +436,8 @@ object Voice {
             mp.prepare()
             mp.start()
             player = mp
-            Log.d(TAG, "$id.$at clip ${file.name}")
+            if (item.soft) character.heard(item.name, SystemClock.elapsedRealtime() / 1000.0)
+            Log.d(TAG, "$id.$at clip ${item.name} (${if (source is VoiceClips.Source.Imported) "hers" else "built in"})")
         } catch (e: Exception) {
             mp.release()
             fallback(id, item, e.toString())
@@ -343,6 +455,12 @@ object Voice {
     private fun advance(id: String) {
         if (id != current) return
         releasePlayer()
+        val next = queued
+        if (next != null) {
+            // The item that was playing has finished: the newer prompt replaces the rest.
+            queued = null
+            return begin(next.items, next.label)
+        }
         step++
         playStep(id)
     }

@@ -34,6 +34,8 @@ data class Status(
     val kind: String? = null,
     /** Which prompt [say] is: "far", "near" or "now" - "now" plays the maneuver clip alone. Null with no [say]. */
     val band: String? = null,
+    /** On a "now" prompt: the maneuver right after, when it is too close to be warned of on its own ("and then"). */
+    val then: Maneuver? = null,
 )
 
 /**
@@ -68,6 +70,8 @@ class Follower(
 
     private var badRun = 0
     private val said = HashSet<Pair<Int, String>>()
+    // Where each maneuver was last announced, in metres to go (REPEAT_FRACTION).
+    private val saidAt = HashMap<Int, Double>()
 
     /**
      * Follow a new route, forgetting everything about the old - including what
@@ -82,6 +86,7 @@ class Follower(
         arrived = false
         badRun = 0
         said.clear()
+        saidAt.clear()
         last = null
         return route
     }
@@ -106,10 +111,16 @@ class Follower(
         trackOffRoute(progress.offRouteM, now)
 
         // Arrival is distance to the end of the line, not to the last maneuver.
+        val wasArrived = arrived
         if (left.metres != null && left.metres < Guidance.ARRIVE_M) arrived = true
 
         val man = next.maneuver
-        val due = if (!offRoute && man != null && !arrived) maybeSay(man, next.metres, speedMs) else null
+        // wasArrived, not arrived: the fix that ARRIVES may still say so. Below a
+        // crawl the "now" band is 25 m - the arrival distance - and checking the
+        // new state swallowed the only prompt saying she is there (guidance.py,
+        // Flet v1.17.0).
+        val due = if (!offRoute && man != null && !wasArrived) maybeSay(man, next.metres, speedMs) else null
+        val then = if (due?.second == "now" && man != null) thenAfter(route, man, speedMs) else null
         val instruction = man?.instruction ?: ""
         return Status(
             ok = true,
@@ -129,6 +140,7 @@ class Follower(
             say = due?.first,
             kind = man?.kind,
             band = due?.second,
+            then = then,
         ).also { last = it }
     }
 
@@ -164,6 +176,21 @@ class Follower(
     }
 
     /**
+     * The maneuver after [man] when it comes within [Guidance.THEN_S] at her
+     * speed (at least [Guidance.THEN_MIN_M]) and is one her voice can name -
+     * not an arrival, a continue or a merge. Null otherwise.
+     */
+    private fun thenAfter(route: RouteLine, man: Maneuver, speedMs: Double?): Maneuver? {
+        val at = route.maneuvers.indexOfFirst { it === man }
+        if (at < 0 || at + 1 >= route.maneuvers.size) return null
+        val next = route.maneuvers[at + 1]
+        val kind = next.kind ?: return null
+        if (kind !in ManeuverKind.MANEUVERS || kind in Guidance.THEN_NOT) return null
+        val limit = maxOf(Guidance.THEN_S * (speedMs ?: 0.0), Guidance.THEN_MIN_M)
+        return next.takeIf { it.cumM - man.cumM <= limit }
+    }
+
+    /**
      * The one prompt due for this maneuver, or null.
      *
      * Walks the bands NEAREST first and fires the first that is due and unsaid.
@@ -171,6 +198,15 @@ class Follower(
      * outwards-in would announce "in a quarter mile, turn left" at the corner
      * itself - a real bug once. Firing a band also marks every wider one said,
      * so a band crossed without being announced cannot fire later.
+     *
+     * A band wider than "now" that comes due while the distance is still above
+     * [Guidance.REPEAT_FRACTION] of where this maneuver was last announced is
+     * marked said and not spoken: it would repeat what she has just heard,
+     * only because her speed moved the bands. "now" always speaks.
+     *
+     * Nor is one spoken when "now" is under [Guidance.NOW_SOON_S] away at her
+     * speed - "now" will say it in a moment. And a "continue" is said once,
+     * whichever band first comes due: nothing about it needs a countdown.
      */
     /** The prompt due now for [man], and its band - or null. */
     private fun maybeSay(man: Maneuver, metres: Double?, speedMs: Double?): Pair<String, String>? {
@@ -185,6 +221,12 @@ class Follower(
                 said.add(index to other)
                 if (other == band) break
             }
+            val nowAt = points["now"] ?: 0.0
+            if (band != "now" && speedMs != null && speedMs > 0.0 && (metres - nowAt) / speedMs < Guidance.NOW_SOON_S) return null
+            val before = saidAt[index]
+            if (band != "now" && before != null && metres > before * Guidance.REPEAT_FRACTION) return null
+            saidAt[index] = metres
+            if (man.kind == ManeuverKind.CONTINUE) Guidance.PROMPT_BANDS.forEach { (_, b) -> said.add(index to b) }
             return Guidance.spoken(man.instruction, man.street, metres, imperial, band) to band
         }
         return null

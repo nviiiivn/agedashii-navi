@@ -1,7 +1,7 @@
 """Golden outputs from the Python ride recorder, for Kotlin's Ride to match.
 
     PYTHONPATH=<NVII-DASH>/apps/navi:<NVII-DASH>/packages/agedashii-washi \
-        /home/nvii/projects/agedashii/venv/bin/python tools/golden_telemetry.py
+        /home/nvii/venvs/flet/bin/python tools/golden_telemetry.py
 
 Writes core/src/test/resources/golden/telemetry.json. Each scenario is a list
 of operations on one telemetry.Ride, replayed exactly by the Kotlin test, and

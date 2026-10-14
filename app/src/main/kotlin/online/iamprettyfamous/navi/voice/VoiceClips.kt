@@ -32,12 +32,45 @@ object VoiceClips {
     private const val TAG = "NaviVoice"
     private const val INCOMING = ".incoming-"
 
+    /** Her built-in voice, shipped inside the APK (assets/voice) so it works on first launch. */
+    private const val BUILT_IN = "voice"
+
     fun dir(context: Context): File = File(context.filesDir, "voice")
 
-    /** Name -> the file that plays for it: the best-ranked format when there are two. */
-    fun clips(context: Context): Map<String, File> = clipsIn(dir(context))
+    /** Where a clip comes from: one she imported, or the one built into the app. */
+    sealed interface Source {
+        data class Imported(val file: File) : Source
+        data class BuiltIn(val asset: String) : Source
+    }
 
-    fun have(context: Context): Set<String> = clips(context).keys
+    /**
+     * THE precedence, in one place: her imported clip wins, then the built-in
+     * one, then (by being absent here) the phone's voice. "Remove voice" clears
+     * only hers, so it returns her to the built-in set, never to silence.
+     */
+    fun sources(context: Context): Map<String, Source> {
+        val out = LinkedHashMap<String, Source>()
+        for ((name, file) in imported(context)) out[name] = Source.Imported(file)
+        for ((name, asset) in builtIn(context)) if (name !in out) out[name] = Source.BuiltIn(asset)
+        return out
+    }
+
+    fun have(context: Context): Set<String> = sources(context).keys
+
+    /** Name -> her imported file: the best-ranked format when there are two. */
+    fun imported(context: Context): Map<String, File> = clipsIn(dir(context))
+
+    @Volatile private var builtInCache: Map<String, String>? = null
+
+    /** Name -> asset path of the built-in clips; listed once, since the APK does not change. */
+    fun builtIn(context: Context): Map<String, String> = builtInCache ?: run {
+        val out = HashMap<String, String>()
+        val files = context.assets.list(BUILT_IN).orEmpty().sortedBy { f ->
+            VoiceLines.EXTS.indexOf("." + f.substringAfterLast('.', "").lowercase()).let { if (it < 0) Int.MAX_VALUE else it }
+        }
+        for (f in files) VoiceLines.parse(f).first?.let { name -> if (name !in out) out[name] = "$BUILT_IN/$f" }
+        out.also { builtInCache = it }
+    }
 
     private fun clipsIn(folder: File): Map<String, File> {
         val out = HashMap<String, File>()
@@ -200,18 +233,29 @@ object VoiceClips {
         else -> e.message ?: e.javaClass.simpleName
     }
 
-    /** Remove every clip. Returns how many files went. */
+    /** Remove every clip she imported. Returns how many files went; the built-in voice stays. */
     fun clear(context: Context): Int = dir(context).listFiles().orEmpty().count { it.isFile && it.delete() }
 
     private fun few(items: List<String>, most: Int = 4): String =
         if (items.size <= most) items.joinToString(", ") else items.take(most).joinToString(", ") + " and ${items.size - most} more"
 
-    /** One line: how much of her voice is in, and what the phone still says. */
+    /** One line: whose voice is in, and what the phone still says. */
     fun statusText(context: Context): String {
-        val have = have(context)
-        if (have.isEmpty()) return "No recorded voice yet."
-        val phone = VoiceLines.FIXED.filter { it !in have && it != "roundabout" }
-        return "Recorded voice: ${have.size} clip${if (have.size == 1) "" else "s"}." +
+        val all = have(context)
+        // Her character lines are counted apart: "45 clips" would hide which turns have none.
+        val have = all.filter(VoiceLines::isSlot).toSet()
+        val extra = all.size - have.size
+        val hers = imported(context).keys.count(VoiceLines::isSlot)
+        val built = have.size - hers
+        val who = when {
+            have.isEmpty() -> "No recorded voice."
+            hers == 0 -> "The built-in voice: $built clip${if (built == 1) "" else "s"}."
+            built == 0 -> "Your voice: $hers clip${if (hers == 1) "" else "s"}."
+            else -> "Your voice: $hers clip${if (hers == 1) "" else "s"}; built-in for $built more."
+        }
+        // Only names the phone would actually say: speeding and open are hers or silent.
+        val phone = VoiceLines.FIXED.filter { it !in have && it != "roundabout" && VoiceLines.standIn(it) != null }
+        return who + (if (extra > 0) " Character: $extra line${if (extra == 1) "" else "s"}." else "") +
             if (phone.isNotEmpty()) " Phone voice for: ${few(phone)}." else ""
     }
 

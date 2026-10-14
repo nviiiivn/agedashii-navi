@@ -1,5 +1,15 @@
 package online.iamprettyfamous.navi.ui
 
+import online.iamprettyfamous.navi.data.DataPack
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.collectAsState
+import android.net.Uri
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.compose.rememberLauncherForActivityResult
+import online.iamprettyfamous.navi.sync.RideSync
+import online.iamprettyfamous.navi.sync.Updater
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -33,7 +43,7 @@ import online.iamprettyfamous.navi.voice.Voice
 import online.iamprettyfamous.navi.voice.VoicePanel
 
 /** A setting that changed, so the Ride screen can apply it at once. */
-enum class Changed { THEME, BIKE, BUILDINGS, NORTH_UP, KEEP_AWAKE, HUD, TELEMETRY, MIC_ON, MIC_OFF, VOICE }
+enum class Changed { THEME, AUTO_THEME, BIKE, BUILDINGS, NORTH_UP, KEEP_AWAKE, HUD, TELEMETRY, MIC_ON, MIC_OFF, VOICE, ORIENTATION, OFFROUTE, MAP_PACK }
 
 /**
  * Settings: every preference that does something today, the honest account of
@@ -58,6 +68,17 @@ fun SettingsPanel(
     version: String,
     onChanged: (Changed) -> Unit,
     onClose: () -> Unit,
+    /** Phase 9: rides sent / waiting, and the button to push them now. */
+    sync: RideSync.Status = RideSync.Status(),
+    onSendNow: () -> Unit = {},
+    update: Updater.State = Updater.State(),
+    onInstallUpdate: () -> Unit = {},
+    onCheckUpdate: () -> Unit = {},
+    /** The level she set, and the last thing setting it had to say. */
+    level: online.iamprettyfamous.navi.core.telemetry.Zeroed = online.iamprettyfamous.navi.core.telemetry.Zeroed(false, 0.0, 0.0),
+    levelNote: String = "",
+    onLevel: (set: Boolean) -> Unit = {},
+    onHelp: () -> Unit = {},
 ) {
     Box(Modifier.fillMaxSize().background(p.bg)) {
         Column(
@@ -74,6 +95,12 @@ fun SettingsPanel(
             Choice("Theme", p, PALETTES.map { it.key to it.name }, prefs.theme) {
                 prefs.theme = it; onChanged(Changed.THEME)
             }
+            Choice("Follow the sun", p, OFF_ON, onOff(prefs.autoTheme)) {
+                prefs.autoTheme = it == "on"; onChanged(Changed.AUTO_THEME)
+            }
+            Text("Sunlight by day, Night at dusk, Red night after dark, and the screen dimmed to match - " +
+                "worked out from where you are, with no sensor and no signal. Picking a theme above turns this off.",
+                p, size = 12, faint = true)
             Choice("Bike", p, listOf("yellow" to "Yellow", "black" to "Black"), prefs.bike) {
                 prefs.bike = it; onChanged(Changed.BIKE)
             }
@@ -89,6 +116,13 @@ fun SettingsPanel(
             Choice("Motorcycle", p, Bikes.names(), prefs.machine) {
                 prefs.machine = it; onChanged(Changed.TELEMETRY)
             }
+            // The Flet app's line: what the rev counter assumes about this engine.
+            val ratio = Bikes.firingRatio(prefs.machine)
+            val (lowHz, highHz) = Bikes.bandHz(prefs.machine)
+            Text(Bikes.profile(prefs.machine).detail + " — " +
+                "fires %.0fx per revolution, so RPM = Hz x %.0f, and the exhaust is searched between %.0f and %.0f Hz. "
+                    .format(ratio, 60 / ratio, lowHz, highHz) +
+                "Get this wrong and every RPM reading is out by a fixed factor.", p, size = 12, faint = true)
             Choice("Map", p, listOf("off" to "Turns with me", "on" to "North up"), onOff(prefs.northUp)) {
                 prefs.northUp = it == "on"; onChanged(Changed.NORTH_UP)
             }
@@ -98,9 +132,19 @@ fun SettingsPanel(
             Choice("Spoken turns", p, OFF_ON, onOff(prefs.voice)) {
                 prefs.voice = it == "on"; onChanged(Changed.VOICE)
             }
+            Choice("Off route after", p, Prefs.OFFROUTE_CHOICES.map { m ->
+                "$m" to if (prefs.imperial) "%d ft".format(Math.round(m * 3.28084 / 10.0) * 10) else "$m m"
+            }, "${prefs.offrouteM}") {
+                prefs.offrouteM = it.toInt(); onChanged(Changed.OFFROUTE)
+            }
+            Text("Three fixes in a row beyond this before it says so, and it has to come back well inside " +
+                "before it stops - otherwise one noisy fix re-routes a corner you took correctly.", p, size = 12, faint = true)
 
             Heading("Your recorded voice", p)
             VoicePanel(p, prefs, rev) { onChanged(Changed.VOICE) }
+
+            Heading("Map pack", p)
+            MapPackPanel(p) { onChanged(Changed.MAP_PACK) }
 
             Heading("Gauges", p)
             Choice("Gauges", p, OFF_ON, onOff(prefs.dash)) {
@@ -116,14 +160,51 @@ fun SettingsPanel(
             Choice("Portrait edge", p, listOf("bottom" to "Bottom", "top" to "Top"), prefs.hudEdge) {
                 prefs.hudEdge = it; onChanged(Changed.HUD)
             }
+            Choice("Which way up", p, listOf("auto" to "Follow the phone", "landscape" to "Always sideways",
+                "portrait" to "Always upright"), prefs.orientation) {
+                prefs.orientation = it; onChanged(Changed.ORIENTATION)
+            }
+            Text("Android's own rotation lock only holds whichever way up the phone was when you tapped it - " +
+                "and a lean into a corner is a rotation to the accelerometer. Lock it here and a sideways " +
+                "mount stays sideways through a hard left.", p, size = 12, faint = true)
 
             Heading("Recording", p)
+            Choice("Record automatically", p, OFF_ON, onOff(prefs.autoRecord)) {
+                prefs.autoRecord = it == "on"; onChanged(Changed.TELEMETRY)
+            }
+            Text("Starts a ride log once the bike is rolling (over about 6 mph for three fixes). " +
+                "A ride you stop by hand is not restarted until the bike has stopped.", p, size = 12, faint = true)
             Choice("Log rate", p, Prefs.HZ_CHOICES.map { "$it" to "$it / s" }, "${prefs.hz}") {
                 prefs.hz = it.toInt(); onChanged(Changed.TELEMETRY)
             }
-            Choice("Sensors", p, listOf("on" to "Only what gauges need", "off" to "All, always"),
-                onOff(prefs.sensorsOnDemand)) {
-                prefs.sensorsOnDemand = it == "on"; onChanged(Changed.TELEMETRY)
+            Choice("Motion sensors", p, listOf("on" to "On", "off" to "Off"), onOff(prefs.sensors)) {
+                prefs.sensors = it == "on"; onChanged(Changed.TELEMETRY)
+            }
+            // What Off costs, said where she makes the choice.
+            Text(
+                if (prefs.sensors) "Tilt, bumps, g peaks, the gyro, the compass and the barometer's climb come from these."
+                else "Off, and it stays off while recording: no tilt, no bumps or g peaks, no gyro, no compass, " +
+                    "no barometer climb. Lean and cornering g still come from the GPS alone.",
+                p, size = 12, faint = prefs.sensors,
+            )
+            if (prefs.sensors) {
+                Choice("Sensors", p, listOf("on" to "Only what gauges need", "off" to "All, always"),
+                    onOff(prefs.sensorsOnDemand)) {
+                    prefs.sensorsOnDemand = it == "on"; onChanged(Changed.TELEMETRY)
+                }
+                // Her mount is not level: call its angle "level" once, kept across rides.
+                Text("Level", p, size = 16)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Action("Set level here", p) { onLevel(true) }
+                    Action("Clear", p) { onLevel(false) }
+                }
+                Text(
+                    levelNote.ifEmpty {
+                        if (level.set) "Level set: roll %.1f°, pitch %.1f° - kept across rides".format(level.roll, level.pitch)
+                        else "The phone's own angles. Hold the bike upright and level, then Set level here."
+                    },
+                    p, size = 12, faint = true,
+                )
             }
 
             // Never remembered: she switches it on per ride (spec rule 5), and a
@@ -138,10 +219,23 @@ fun SettingsPanel(
             for (s in sensors) Text(sensorLine(s), p, size = 16, faint = s.hz == null)
             Text(micAccount(mic), p, size = 16, faint = !mic.on)
             Text(voiceAccount(voice, prefs.voice), p, size = 16, faint = !prefs.voice)
-            Text("Recording runs every sensor at 50 per second, whatever this says.", p, size = 12, faint = true)
+            Text(
+                if (prefs.sensors) "Recording runs every sensor at 50 per second, whatever this says."
+                else "The motion sensors are off, recording included.",
+                p, size = 12, faint = true,
+            )
+
+            Heading("Rides", p)
+            Text(syncLine(sync, prefs.syncUrl), p, size = 16, faint = sync.waiting == 0 && !sync.busy)
+            if (sync.last.isNotEmpty()) Text(sync.last, p, size = 12, faint = true)
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) { RoundButton("Send now", p) { onSendNow() } }
 
             Heading("About", p)
+            Action("How this works", p) { onHelp() }
             Text("Agedashii Navi $version", p, size = 16)
+            if (update.available) Action(if (update.downloading) "Downloading ${update.versionName}: ${update.progress}%" else "Install update ${update.versionName}", p) { if (!update.downloading) onInstallUpdate() }
+            else Action("Check for an update", p) { onCheckUpdate() }
+            if (update.note.isNotEmpty()) Text(update.note, p, size = 12, faint = true)
             for (line in CREDITS) Text(line, p, size = 12, faint = true)
         }
     }
@@ -151,6 +245,14 @@ private val OFF_ON = listOf("off" to "Off", "on" to "On")
 
 private fun onOff(b: Boolean) = if (b) "on" else "off"
 
+/** "3 sent · 2 waiting · sending…" and where they go. */
+fun syncLine(s: RideSync.Status, url: String): String {
+    val parts = mutableListOf("${s.sent} sent")
+    parts += if (s.waiting == 0) "nothing waiting" else "${s.waiting} waiting"
+    if (s.busy) parts += "sending…"
+    return parts.joinToString(" · ") + "  →  " + url.removePrefix("http://").removePrefix("https://")
+}
+
 private fun gpsLine(ageS: Double?, accM: Double?, imperial: Boolean): String {
     if (ageS == null) return "GPS: no fix yet"
     val acc = accM?.let { if (imperial) " · ±%.0f ft".format(it * 3.28084) else " · ±%.0f m".format(it) } ?: ""
@@ -159,6 +261,7 @@ private fun gpsLine(ageS: Double?, accM: Double?, imperial: Boolean): String {
 
 private fun sensorLine(s: Telemetry.SensorLine): String = when {
     !s.present -> "${label(s.name)}: not on this phone"
+    s.offByHer -> "${label(s.name)}: off - you switched the motion sensors off"
     s.hz == null -> "${label(s.name)}: off - no gauge on screen needs it"
     s.lastSeenS == null -> "${label(s.name)}: on at ${s.hz} / s, nothing received yet"
     else -> "${label(s.name)}: on at ${s.hz} / s, last reading %.1f s ago".format(s.lastSeenS)
@@ -219,6 +322,21 @@ private fun Text(text: String, p: Palette, size: Int, bold: Boolean = false, fai
     )
 }
 
+/** A button among the chips: 56 dp for gloves, the round buttons' ring. */
+@Composable
+private fun Action(label: String, p: Palette, onClick: () -> Unit) {
+    Box(
+        Modifier.heightIn(min = 56.dp)
+            .background(p.surface, RoundedCornerShape(10.dp))
+            .border(2.dp, p[DashColours.CONTROL_RING], RoundedCornerShape(10.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 18.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        BasicText(label, style = TextStyle(color = p.text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold))
+    }
+}
+
 /** A label and its choices as chips, 56 dp tall for gloves; the chosen one filled in accent. */
 @Composable
 private fun Choice(label: String, p: Palette, options: List<Pair<String, String>>, chosen: String, pick: (String) -> Unit) {
@@ -251,5 +369,64 @@ private fun Choice(label: String, p: Palette, options: List<Pair<String, String>
                 }
             }
         }
+    }
+}
+
+
+/**
+ * Which region's map is on the phone, and how to put a different one there.
+ *
+ * Her request: "miami/keys/ft lauderdale, greater seattle area (redmond to
+ * tacoma?), bay area, NYC area" and "premade packs for others to use". A pack
+ * is one file (tools/make_pack.py) holding the map, the router's tiles and the
+ * searchable list for a region; importing one replaces all three at once.
+ *
+ * The import runs on DataPack's own thread and reports through its state, so
+ * this panel shows the same progress and the same errors as the first-start
+ * unpack - there is one code path for putting map data in place.
+ */
+@Composable
+private fun MapPackPanel(p: Palette, onChanged: () -> Unit) {
+    val context = LocalContext.current
+    val data by DataPack.state.collectAsState()
+    val pick = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
+        if (uri != null) DataPack.importPack(context, uri) { onChanged() }
+    }
+    val where = when {
+        data.region.isNotEmpty() -> data.region
+        data.version.isNotEmpty() -> "the map this app was built with"
+        else -> "none on this phone yet"
+    }
+    Text("On this phone: $where", p, size = 15, bold = true)
+    if (data.busy) {
+        val mb = data.totalBytes / 1_000_000
+        val doneMb = data.doneBytes / 1_000_000
+        Text("Putting the map in place: %,d of %,d MB".format(doneMb, mb), p, size = 12, faint = true)
+    } else if (data.error.isNotEmpty()) {
+        Text(data.error, p, size = 12)
+    } else {
+        Text("A pack holds a region's map, its routing tiles and its searchable places - " +
+            "about 200 MB. Importing one replaces the region on this phone; your rides, " +
+            "settings and voice are untouched.", p, size = 12, faint = true)
+    }
+    PackButton(if (data.busy) "Working…" else "Import a map pack (${DataPack.PACK_SUFFIX})", p, !data.busy) {
+        // Any type: Android hands a .navipack no MIME type of its own, and a
+        // filter that does not match leaves her looking at an empty picker.
+        pick.launch(arrayOf("*/*"))
+    }
+}
+
+@Composable
+private fun PackButton(label: String, p: Palette, enabled: Boolean, onClick: () -> Unit) {
+    Box(
+        Modifier.fillMaxWidth().padding(top = 8.dp)
+            .background(if (enabled) p.accent else p.border, RoundedCornerShape(10.dp))
+            .clickable(enabled = enabled) { onClick() }
+            .padding(vertical = 14.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        BasicText(label, style = TextStyle(
+            color = if (enabled) p.bg else p.text, fontSize = 15.sp,
+            fontWeight = FontWeight.Bold))
     }
 }

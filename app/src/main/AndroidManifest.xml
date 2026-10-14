@@ -18,16 +18,18 @@
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
 
-    <!-- Rule 1 is "works with no signal, no exception", so for now the app is
-         not allowed onto the network at all: MapLibre's library manifest asks
-         for INTERNET and this strips it. Anything that silently needed the
-         network fails loudly here instead of only on the road. Sync (phase 9)
-         is the first thing that will add it back, deliberately. -->
-    <uses-permission
-        android:name="android.permission.INTERNET"
-        tools:node="remove" />
+    <!-- Phase 9 (sync): the network is allowed back in, for one thing - sending
+         finished rides to the dashboard when the phone has Wi-Fi. Everything on
+         the road still works with no signal; RideSync only ever runs after a
+         ride, on open, or when a network appears. The dashboard is plain http
+         on the LAN, hence cleartext. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- The app installs its own updates (downloaded to its cache, handed to Android's installer). -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <application
+        android:usesCleartextTraffic="true"
         android:label="Navi K"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher"
@@ -44,9 +46,23 @@
             </intent-filter>
         </activity>
 
+        <!-- Holds the GPS while a route is followed, screen off included. -->
+        <service
+            android:name=".routing.GuideService"
+            android:exported="false"
+            android:foregroundServiceType="location" />
         <service
             android:name=".record.RideService"
             android:exported="false"
             android:foregroundServiceType="location|microphone" />
-    </application>
+            <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+</application>
 </manifest>

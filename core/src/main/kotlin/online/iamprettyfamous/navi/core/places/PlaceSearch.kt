@@ -19,6 +19,13 @@ data class PlaceRow(
     val notable: Boolean = false,
     val a1: Long? = null,
     val a2: Long? = null,
+    /**
+     * Its street address: "2235 Telegraph Avenue" from OSM, or "off
+     * Telegraph Avenue" when only the street it stands on is known, or null.
+     * Her words: three Goodwills that differ only in how far away they are
+     * are three coin flips.
+     */
+    val addr: String? = null,
 )
 
 /** A place found: its name, where it is, "kind · town", and how far from her. */
@@ -38,6 +45,13 @@ interface PlaceIndex {
 
     /** Schema 2: sizes, notability, kinds and towns are searchable. */
     fun hasAreas(): Boolean
+
+    /**
+     * Whether `place` carries the `addr` column. A list built before street
+     * addresses were added has none, and the app must open it rather than
+     * fail: she keeps the unpacked list until a new MANIFEST replaces it.
+     */
+    fun hasAddr(): Boolean = false
 
     /** Place ids with a name (or alternative name) word starting [form]. */
     fun namePrefix(form: String): Set<Long>
@@ -61,8 +75,12 @@ object PlaceSql {
     const val NAME_PREFIX = "SELECT id FROM tok WHERE t >= ? AND t < ?"
     const val KIND_PREFIX = "SELECT kind FROM kind_tok WHERE t >= ? AND t < ?"
     const val AREA_PREFIX = "SELECT aid FROM area_tok WHERE t >= ? AND t < ?"
-    const val ROWS_V2 = "SELECT id, name, kind, lat, lon, area_m2, notable, a1, a2 FROM place WHERE id IN "
-    const val ROWS_V1 = "SELECT id, name, kind, lat, lon, 0, 0, NULL, NULL FROM place WHERE id IN "
+    const val ROWS_V2 = "SELECT id, name, kind, lat, lon, area_m2, notable, a1, a2, addr FROM place WHERE id IN "
+    /** Schema 2 without the address column: the same shape, a null in its place. */
+    const val ROWS_V2_NO_ADDR = "SELECT id, name, kind, lat, lon, area_m2, notable, a1, a2, NULL FROM place WHERE id IN "
+    /** Does `place` carry `addr`? One row per column of the table. */
+    const val COLUMNS = "PRAGMA table_info(place)"
+    const val ROWS_V1 = "SELECT id, name, kind, lat, lon, 0, 0, NULL, NULL, NULL FROM place WHERE id IN "
     const val AREAS = "SELECT aid, name FROM area WHERE aid IN "
 
     /** The upper bound of a prefix range. */
@@ -141,9 +159,112 @@ object PlaceSearch {
         return bare.lowercase().split(SPLIT).filter { it.isNotEmpty() }
     }
 
+
+    /**
+     * What she wrote on an envelope, pulled apart. Her report, 2026-10-12: "I
+     * TRIED LITERALLY PUTTING IN AN ADDRESS AND THE APP WOULDN'T TAKE ME THERE
+     * -- I COULDN'T FIGURE OUT WHICH GOODWILL WAS THE ONE I WANTED SO I PUT IN
+     * THE ADDRESS AND IT WOULDNT' LET ME DO THAT".
+     *
+     * [number] is remembered and cannot be found: the places list holds
+     * streets, not doors. [label] is for showing; [street] and [town] are what
+     * the search is given, spelled the way OSM spells them.
+     */
+    data class Address(val number: String, val street: String, val town: String, val label: String)
+
+    /** Envelope spelling to OSM spelling: Ave -> avenue, N -> north. */
+    val SUFFIX = mapOf(
+        "ave" to "avenue", "av" to "avenue", "st" to "street", "str" to "street",
+        "rd" to "road", "blvd" to "boulevard", "blv" to "boulevard", "dr" to "drive",
+        "ln" to "lane", "ct" to "court", "pl" to "place", "plz" to "plaza",
+        "hwy" to "highway", "pkwy" to "parkway", "pky" to "parkway", "ter" to "terrace",
+        "trl" to "trail", "cir" to "circle", "sq" to "square", "expy" to "expressway",
+        "wy" to "way", "aly" to "alley", "byp" to "bypass", "cres" to "crescent",
+        "xing" to "crossing", "mnr" to "manor", "gln" to "glen", "hts" to "heights",
+    )
+    private val DIRECTION = mapOf(
+        "n" to "north", "s" to "south", "e" to "east", "w" to "west",
+        "ne" to "northeast", "nw" to "northwest", "se" to "southeast", "sw" to "southwest",
+    )
+
+    /** The state, the ZIP, the country: after the street, and not a town. */
+    private val NOT_A_TOWN = Regex("^(?:[a-z]{2}|\\d{5}(?:-\\d{4})?|usa|us|united states)$")
+
+    /**
+     * The unit AND EVERYTHING AFTER IT. Cut as a phrase: dropping only "Apt"
+     * leaves a stray "4" welded to the end of the street name, and nothing
+     * matches "grand avenue 4".
+     */
+    private val UNIT = Regex(
+        "[\\s,]+(?:apt|apartment|unit|ste|suite|bldg|building|fl|floor|rm|room|no\\.?|#)\\b.*$",
+        RegexOption.IGNORE_CASE)
+    private val HOUSE = Regex("^(\\d+[a-z]?(?:\\s*-\\s*\\d+[a-z]?)?)\\s+(?=\\S)", RegexOption.IGNORE_CASE)
+
+    private fun expand(words: List<String>): List<String> = words.mapIndexed { i, w ->
+        when {
+            i == 0 && words.size > 1 && w in DIRECTION -> DIRECTION.getValue(w)
+            i == words.size - 1 && w in SUFFIX -> SUFFIX.getValue(w)
+            else -> w
+        }
+    }
+
+    /**
+     * [text] as an address, or null when it is not one - and then the ordinary
+     * place search has it, so "goodwill" and "Chabot Space Science Center" are
+     * untouched. Address-shaped means a house number in front of a name, or a
+     * name that ends in a street suffix.
+     */
+    fun parseAddress(text: String?): Address? {
+        val raw = (text ?: "").trim()
+        if (raw.length < 4) return null
+        val low = raw.lowercase()
+        if (low.startsWith("geo:") || low.startsWith("http")) return null
+        val chunks = raw.split(',').map { it.trim() }.filter { it.isNotEmpty() }
+        if (chunks.isEmpty()) return null
+
+        val head = chunks[0]
+        val found = HOUSE.find(head)
+        val number = found?.groupValues?.get(1)?.replace(" ", "") ?: ""
+        val streetRaw = UNIT.replace(if (found != null) head.substring(found.value.length) else head, "")
+        val words = normTokens(streetRaw)
+        if (words.isEmpty() || words.all { w -> w.all { it.isDigit() } }) return null
+        val last = words.last()
+        val suffixed = last in SUFFIX || last in SUFFIX.values
+        if (number.isEmpty() && !suffixed) return null
+        val street = expand(words).joinToString(" ")
+
+        var town = ""
+        for (c in chunks.drop(1)) {
+            val tokens = normTokens(c).filter { !NOT_A_TOWN.matches(it) }
+            if (tokens.isNotEmpty()) {
+                town = tokens.joinToString(" ")
+                break
+            }
+        }
+        // Shown with her own capitals kept: title() alone says "Macarthur".
+        val typed = streetRaw.split(Regex("[^0-9A-Za-z]+")).filter { it.isNotEmpty() }
+        val longer = expand(typed.map { it.lowercase() })
+        val shown = typed.zip(longer).joinToString(" ") { (short, long) ->
+            when {
+                long != short.lowercase() -> long.replaceFirstChar { it.uppercase() }
+                short.all { it.isLowerCase() || !it.isLetter() } && !short[0].isDigit() ->
+                    short.replaceFirstChar { it.uppercase() }
+                else -> short
+            }
+        }
+        return Address(number, street, town, listOf(number, shown).filter { it.isNotEmpty() }.joinToString(" "))
+    }
+
     /** The places whose name answers [text], best first, at most [limit]. */
     fun search(index: PlaceIndex, text: String, near: LatLon?, limit: Int = 12): List<PlaceHit> {
-        val words = normTokens(text).filter { it !in STOP_WORDS && it.length >= MIN_WORD }.distinct()
+        // An ADDRESS is asked as its street and its town, which the list does
+        // hold (kind "street", one row per street AND town). The house number is
+        // carried back onto the row and said to be an estimate: the list has
+        // street geometry and no doors.
+        val posted = parseAddress(text)
+        val asked = if (posted != null) listOf(posted.street, posted.town)
+            .filter { it.isNotEmpty() }.joinToString(" ") else text
+        val words = normTokens(asked).filter { it !in STOP_WORDS && it.length >= MIN_WORD }.distinct()
         if (words.isEmpty()) return emptyList()
         val v2 = index.hasAreas()
         val byName = words.map { w -> forms(w).flatMapTo(HashSet()) { index.namePrefix(it) } }
@@ -211,8 +332,25 @@ object PlaceSearch {
         }
         val towns = if (v2) index.areaNames(best.mapNotNull { it.row.a1 }.distinct()) else emptyMap()
         return best.map { s ->
-            val detail = listOfNotNull(s.row.kind.ifEmpty { null }, s.row.a1?.let { towns[it] }).joinToString(" · ")
-            PlaceHit(s.name, s.row.lat, s.row.lon, detail, s.dist)
+            // The ADDRESS is what tells two shops of one name apart, so it is
+            // on the row. A real one ("2235 Telegraph Avenue") stands in for the
+            // town, which it already implies and which would push the line past
+            // the width of a phone; a fallback ("off Telegraph Avenue") does not,
+            // so that keeps the town beside it.
+            val addr = s.row.addr
+            val place = if (addr != null && !addr.startsWith("off ")) addr
+                else listOfNotNull(addr, s.row.a1?.let { towns[it] }).joinToString(" · ")
+            val detail = listOfNotNull(s.row.kind.ifEmpty { null }, place.ifEmpty { null })
+                .joinToString(" · ")
+            // Her number back on the row, and the row saying what it is not. The
+            // street is where the list can take her; the door is not in it.
+            if (posted != null && s.row.kind == "street") {
+                val named = listOf(posted.number, s.name).filter { it.isNotEmpty() }.joinToString(" ")
+                PlaceHit(named, s.row.lat, s.row.lon,
+                    if (posted.number.isEmpty()) detail else "$detail · no house numbers offline", s.dist)
+            } else {
+                PlaceHit(s.name, s.row.lat, s.row.lon, detail, s.dist)
+            }
         }
     }
 

@@ -1,0 +1,536 @@
+package online.iamprettyfamous.navi.core.voice
+
+import online.iamprettyfamous.navi.core.voice.VoiceLines.Item
+import kotlin.random.Random
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertNotEquals
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
+
+/** Scripted dice: each roll and pick in order, then 0 - a roll of 0 always passes its rate. */
+private class Dice(vararg rolls: Double, picks: List<Int> = emptyList()) : Random() {
+    private val rolls = ArrayDeque(rolls.toList())
+    private val picks = ArrayDeque(picks)
+    override fun nextBits(bitCount: Int): Int = error("unscripted")
+    override fun nextDouble(): Double = rolls.removeFirstOrNull() ?: 0.0
+    override fun nextInt(until: Int): Int = (picks.removeFirstOrNull() ?: 0).coerceAtMost(until - 1)
+}
+
+/** The rules agreed by minions 2, 3 and 5 (2026-09-28), so both apps behave alike. */
+class CharacterTest {
+    private val pack = setOf(
+        "turn-left", "turn-right", "exit", "arrive", "offroute", "rerouting", "start", "speeding", "dist-0.1mile",
+        "flourish-arrival-choppa", "flourish-arrival-stop-it", "flourish-angry-you-bastard", "flourish-angry-big-mistake",
+        "flourish-urgent-do-it-now", "flourish-urgent-move", "flourish-scold-slow-down", "flourish-start-lets-go",
+        "flourish-sorry-my-mistake", "flourish-ui-what", "interject-cough", "interject-cough-2",
+    )
+    private val maneuver = Any()
+
+    @Test
+    fun `her names - lenient spelling, known moods only, a slot for every wild line`() {
+        assertEquals("flourish-arrival-choppa", VoiceLines.parse("flourish-arrival-choppa.mp3").first)
+        assertEquals("flourish-arrival-choppa", VoiceLines.parse("Flourish_Arrival_Choppa.MP3").first)
+        assertNull(VoiceLines.parse("flourish-happy-birthday.mp3").first, "an unknown mood is ignored")
+        assertNull(VoiceLines.parse("flourish-arrival.mp3").first, "no slug")
+        assertEquals("interject-cough", VoiceLines.parse("interject-cough.mp3").first)
+        assertEquals("interject-cough-2", VoiceLines.parse("interject-cough-2.mp3").first)
+        assertEquals("number-3", VoiceLines.parse("number-3.mp3").first)
+        assertNull(VoiceLines.parse("number-03.mp3").first)
+        assertEquals("turn-left", Character.wildSlot("wild-turn-left-go-left-if-you-want-to-live"))
+        assertEquals("sharp-right", Character.wildSlot("wild-sharp-right-now"))
+        assertEquals("dist-0.1mile", Character.wildSlot("wild-dist-0.1mile-close"))
+        assertEquals("offroute", Character.wildSlot("wild-offroute-you-bastard"))
+        assertNull(Character.wildSlot("wild-left-go"), "no such slot")
+        assertNull(Character.wildSlot("wild-turn-left"), "no slug")
+        assertNull(VoiceLines.parse("wild-sideways-x.mp3").first)
+        assertNull(Character.mood("turn-left"))
+        assertNull(VoiceLines.distanceFeet("flourish-urgent-move"), "never a distance")
+    }
+
+    @Test
+    fun `minion 5's staged pool (396, with banter) is taken, every file, and the wild lines find their slots`() {
+        val files = listOf(
+            "and-then.mp3", "arrive.mp3", "continue.mp3", "dist-0.1mile.mp3", "dist-1mile.mp3",
+            "dist-half.mp3", "dist-quarter.mp3", "exit-left.mp3", "exit-right.mp3", "exit.mp3",
+            "flourish-angry-asshole-2.mp3", "flourish-angry-bastard.mp3", "flourish-angry-bitch-2.mp3",
+            "flourish-angry-bitch-3.mp3", "flourish-angry-bitch.mp3", "flourish-angry-bullshit-2.mp3",
+            "flourish-angry-bullshit-3.mp3", "flourish-angry-bullshit.mp3",
+            "flourish-angry-dont-bullshit-me.mp3", "flourish-angry-fuck-you-2.mp3",
+            "flourish-angry-fuck-you.mp3", "flourish-angry-go-to-hell.mp3", "flourish-angry-haha-2.mp3",
+            "flourish-angry-haha-3.mp3", "flourish-angry-haha-4.mp3", "flourish-angry-haha.mp3",
+            "flourish-angry-lack-discipline.mp3", "flourish-angry-no.mp3", "flourish-angry-nooo.mp3",
+            "flourish-angry-oh-shit.mp3", "flourish-angry-shut-up-2.mp3", "flourish-angry-shut-up.mp3",
+            "flourish-angry-son-of-a-bitch-2.mp3", "flourish-angry-son-of-a-bitch-3.mp3",
+            "flourish-angry-son-of-a-bitch.mp3", "flourish-angry-stop-whining.mp3",
+            "flourish-angry-what-are-you-doing.mp3", "flourish-angry-what-the-fuck-2.mp3",
+            "flourish-angry-what-the-fuck.mp3", "flourish-angry-wtf.mp3", "flourish-angry-you-bastards.mp3",
+            "flourish-angry-you-idiot.mp3", "flourish-arrival-bye-2.mp3", "flourish-arrival-bye.mp3",
+            "flourish-arrival-game-over-2.mp3", "flourish-arrival-game-over.mp3",
+            "flourish-arrival-goodbye-2.mp3", "flourish-arrival-goodbye-3.mp3",
+            "flourish-arrival-goodbye.mp3", "flourish-arrival-haha-long.mp3",
+            "flourish-arrival-hasta-la-vista-2.mp3", "flourish-arrival-hasta-la-vista.mp3",
+            "flourish-arrival-ill-be-back-2.mp3", "flourish-arrival-ill-be-back.mp3",
+            "flourish-arrival-investigation-over.mp3", "flourish-arrival-stop-it-2.mp3",
+            "flourish-arrival-stop-it-3.mp3", "flourish-arrival-stop-it.mp3",
+            "flourish-arrival-terrific-2.mp3", "flourish-arrival-terrific.mp3",
+            "flourish-arrival-well-that-hit-the-spot-2.mp3", "flourish-arrival-well-that-hit-the-spot.mp3",
+            "flourish-banter-amazing.mp3", "flourish-banter-california-2.mp3",
+            "flourish-banter-california-3.mp3", "flourish-banter-california.mp3",
+            "flourish-banter-come-on-2.mp3", "flourish-banter-come-on-3.mp3", "flourish-banter-come-on.mp3",
+            "flourish-banter-correct-2.mp3", "flourish-banter-correct-3.mp3", "flourish-banter-correct.mp3",
+            "flourish-banter-definitely.mp3", "flourish-banter-exactly-2.mp3",
+            "flourish-banter-exactly-3.mp3", "flourish-banter-exactly.mp3", "flourish-banter-excellent-2.mp3",
+            "flourish-banter-excellent-3.mp3", "flourish-banter-excellent.mp3", "flourish-banter-go-on-2.mp3",
+            "flourish-banter-go-on-3.mp3", "flourish-banter-go-on.mp3", "flourish-banter-good-2.mp3",
+            "flourish-banter-good-3.mp3", "flourish-banter-good.mp3", "flourish-banter-great.mp3",
+            "flourish-banter-haha-2.mp3", "flourish-banter-haha-3.mp3", "flourish-banter-haha-4.mp3",
+            "flourish-banter-haha.mp3", "flourish-banter-i-agree-with-you.mp3",
+            "flourish-banter-i-can-do-this-all-day-long.mp3", "flourish-banter-i-hear-you-2.mp3",
+            "flourish-banter-i-hear-you-3.mp3", "flourish-banter-i-hear-you.mp3",
+            "flourish-banter-i-insist-2.mp3", "flourish-banter-i-insist-3.mp3",
+            "flourish-banter-i-insist.mp3", "flourish-banter-i-like-that-2.mp3",
+            "flourish-banter-i-like-that.mp3", "flourish-banter-i-love-it-2.mp3",
+            "flourish-banter-i-love-it.mp3", "flourish-banter-ill-be-back-2.mp3",
+            "flourish-banter-ill-be-back-3.mp3", "flourish-banter-ill-be-back.mp3",
+            "flourish-banter-im-a-quick-learner.mp3", "flourish-banter-its-show-time-2.mp3",
+            "flourish-banter-its-show-time-3.mp3", "flourish-banter-its-show-time.mp3",
+            "flourish-banter-no-problemo.mp3", "flourish-banter-oh-yeah-2.mp3", "flourish-banter-okay-2.mp3",
+            "flourish-banter-okay-3.mp3", "flourish-banter-okay.mp3", "flourish-banter-pasta-2.mp3",
+            "flourish-banter-pasta.mp3", "flourish-banter-sauerkraut-2.mp3", "flourish-banter-sauerkraut.mp3",
+            "flourish-banter-sure-2.mp3", "flourish-banter-sure-3.mp3", "flourish-banter-sure.mp3",
+            "flourish-banter-terrific-2.mp3", "flourish-banter-terrific-3.mp3",
+            "flourish-banter-terrific.mp3", "flourish-banter-thanks-for-the-tip.mp3",
+            "flourish-banter-thats-cool.mp3", "flourish-banter-thats-right-2.mp3",
+            "flourish-banter-thats-right.mp3", "flourish-banter-trust-me-2.mp3",
+            "flourish-banter-trust-me-3.mp3", "flourish-banter-trust-me.mp3",
+            "flourish-banter-well-that-hit-the-spot-2.mp3", "flourish-banter-well-that-hit-the-spot.mp3",
+            "flourish-banter-what-are-we-having-for-breakfast-2.mp3",
+            "flourish-banter-what-are-we-having-for-breakfast.mp3", "flourish-banter-yeah-2.mp3",
+            "flourish-banter-yeah-3.mp3", "flourish-banter-yeah.mp3", "flourish-banter-yes-2.mp3",
+            "flourish-banter-yes-3.mp3", "flourish-banter-yes.mp3", "flourish-banter-yummy-2.mp3",
+            "flourish-banter-yummy.mp3", "flourish-scold-are-you-crazy-2.mp3",
+            "flourish-scold-are-you-crazy-3.mp3", "flourish-scold-are-you-crazy.mp3",
+            "flourish-scold-chill-out-2.mp3", "flourish-scold-chill-out.mp3",
+            "flourish-scold-dont-be-ridiculous-2.mp3", "flourish-scold-dont-be-ridiculous.mp3",
+            "flourish-scold-dont-do-that-2.mp3", "flourish-scold-dont-do-that-3.mp3",
+            "flourish-scold-dont-do-that.mp3", "flourish-scold-drunk-2.mp3", "flourish-scold-drunk.mp3",
+            "flourish-scold-enough-2.mp3", "flourish-scold-enough.mp3", "flourish-scold-ridiculous.mp3",
+            "flourish-scold-stop-it-2.mp3", "flourish-scold-stop-it.mp3", "flourish-scold-stop-that-2.mp3",
+            "flourish-scold-stop-that-3.mp3", "flourish-scold-stop-that.mp3",
+            "flourish-scold-stop-whining-2.mp3", "flourish-scold-stop-whining.mp3",
+            "flourish-scold-this-is-an-arrest.mp3", "flourish-scold-you-lack-discipline-2.mp3",
+            "flourish-scold-you-lack-discipline.mp3", "flourish-sorry-count-on-me.mp3",
+            "flourish-sorry-i-dont-know-2.mp3", "flourish-sorry-i-dont-know.mp3",
+            "flourish-sorry-i-lied-2.mp3", "flourish-sorry-i-lied-3.mp3", "flourish-sorry-i-lied.mp3",
+            "flourish-sorry-i-was-wrong.mp3", "flourish-sorry-im-sorry-2.mp3",
+            "flourish-sorry-im-sorry-3.mp3", "flourish-sorry-im-sorry.mp3", "flourish-sorry-negative-2.mp3",
+            "flourish-sorry-negative-3.mp3", "flourish-sorry-negative.mp3", "flourish-sorry-no-deal-2.mp3",
+            "flourish-sorry-no-deal-3.mp3", "flourish-sorry-no-deal.mp3", "flourish-sorry-oh-no-2.mp3",
+            "flourish-sorry-oh-no.mp3", "flourish-sorry-really-sorry.mp3", "flourish-sorry-so-sorry.mp3",
+            "flourish-sorry-sorry.mp3", "flourish-start-aagh.mp3", "flourish-start-california.mp3",
+            "flourish-start-good-morning-2.mp3", "flourish-start-good-morning-3.mp3",
+            "flourish-start-good-morning.mp3", "flourish-start-hello-2.mp3", "flourish-start-hello.mp3",
+            "flourish-start-ill-be-back-2.mp3", "flourish-start-ill-be-back-3.mp3",
+            "flourish-start-ill-be-back.mp3", "flourish-start-its-show-time-2.mp3",
+            "flourish-start-its-show-time.mp3", "flourish-start-listen-carefully.mp3",
+            "flourish-start-showtime.mp3", "flourish-start-your-clothes-now.mp3",
+            "flourish-ui-ask-questions.mp3", "flourish-ui-breakfast.mp3", "flourish-ui-correct-2.mp3",
+            "flourish-ui-correct-3.mp3", "flourish-ui-correct.mp3", "flourish-ui-exactly-2.mp3",
+            "flourish-ui-exactly.mp3", "flourish-ui-excellent-2.mp3", "flourish-ui-excellent.mp3",
+            "flourish-ui-give-me-your-address.mp3", "flourish-ui-good-2.mp3", "flourish-ui-good.mp3",
+            "flourish-ui-hello-2.mp3", "flourish-ui-hello.mp3", "flourish-ui-i-hear-you.mp3",
+            "flourish-ui-names-and-addresses.mp3", "flourish-ui-no-2.mp3", "flourish-ui-no.mp3",
+            "flourish-ui-ok.mp3", "flourish-ui-okay-2.mp3", "flourish-ui-okay.mp3", "flourish-ui-sure-2.mp3",
+            "flourish-ui-sure.mp3", "flourish-ui-what-2.mp3", "flourish-ui-what-3.mp3",
+            "flourish-ui-what-do-you-want-2.mp3", "flourish-ui-what-do-you-want-3.mp3",
+            "flourish-ui-what-do-you-want.mp3", "flourish-ui-what.mp3", "flourish-ui-who-are-you-2.mp3",
+            "flourish-ui-who-are-you.mp3", "flourish-ui-yes-2.mp3", "flourish-ui-yes-3.mp3",
+            "flourish-ui-yes.mp3", "flourish-urgent-come-on-2.mp3", "flourish-urgent-come-on-3.mp3",
+            "flourish-urgent-come-on.mp3", "flourish-urgent-do-it-2.mp3", "flourish-urgent-do-it-3.mp3",
+            "flourish-urgent-do-it-now-2.mp3", "flourish-urgent-do-it-now-3.mp3",
+            "flourish-urgent-do-it-now.mp3", "flourish-urgent-do-it.mp3", "flourish-urgent-get-down-2.mp3",
+            "flourish-urgent-get-down.mp3", "flourish-urgent-go-2.mp3", "flourish-urgent-go.mp3",
+            "flourish-urgent-i-insist.mp3", "flourish-urgent-immediately-2.mp3",
+            "flourish-urgent-immediately-3.mp3", "flourish-urgent-immediately.mp3",
+            "flourish-urgent-just-do-it.mp3", "flourish-urgent-move.mp3", "flourish-urgent-no-problemo.mp3",
+            "flourish-urgent-now-2.mp3", "flourish-urgent-now-3.mp3", "flourish-urgent-now.mp3",
+            "flourish-urgent-quickly-2.mp3", "flourish-urgent-quickly-3.mp3", "flourish-urgent-quickly.mp3",
+            "flourish-urgent-right-now-2.mp3", "flourish-urgent-right-now-3.mp3",
+            "flourish-urgent-right-now.mp3", "flourish-urgent-trust-me.mp3", "flourish-urgent-yeaargh.mp3",
+            "hours-1.mp3", "hours-2.mp3", "interject-cough-2.mp3", "interject-cough.mp3", "merge.mp3",
+            "number-1.mp3", "number-10.mp3", "number-2.mp3", "number-20.mp3", "number-3.mp3", "number-4.mp3",
+            "number-5.mp3", "number-7.mp3", "number-8.mp3", "offroute.mp3", "open.mp3", "part-exit-a.mp3",
+            "part-exit-b.mp3", "part-merge-a.mp3", "part-merge-b.mp3", "part-sharp-left-a.mp3",
+            "part-sharp-left-b.mp3", "part-sharp-right-a.mp3", "part-sharp-right-b.mp3",
+            "part-speeding-a.mp3", "part-speeding-b.mp3", "part-start-a.mp3", "part-start-b.mp3",
+            "part-uturn-a.mp3", "part-uturn-b.mp3", "rerouting.mp3", "roundabout.mp3", "seconds-1.mp3",
+            "sharp-left.mp3", "sharp-right.mp3", "slight-left.mp3", "slight-right.mp3", "speeding.mp3",
+            "start.mp3", "turn-left.mp3", "turn-right.mp3", "uturn.mp3", "wild-arrive-choppa.mp3",
+            "wild-arrive-game-over-2.mp3", "wild-arrive-game-over-3.mp3", "wild-arrive-game-over-4.mp3",
+            "wild-arrive-game-over.mp3", "wild-arrive-hasta-la-vista-baby-2.mp3",
+            "wild-arrive-hasta-la-vista-baby-3.mp3", "wild-arrive-hasta-la-vista-baby.mp3",
+            "wild-arrive-hasta-la-vista.mp3", "wild-arrive-im-back-2.mp3", "wild-arrive-im-back.mp3",
+            "wild-arrive-investigation-is-over-2.mp3", "wild-arrive-investigation-is-over.mp3",
+            "wild-arrive-mission-accomplished-2.mp3", "wild-arrive-mission-accomplished.mp3",
+            "wild-arrive-you-have-arrived.mp3", "wild-continue-go-on-2.mp3", "wild-continue-go-on-3.mp3",
+            "wild-continue-go-on-4.mp3", "wild-continue-go-on.mp3", "wild-offroute-are-you-crazy-3.mp3",
+            "wild-offroute-are-you-crazy-4.mp3", "wild-offroute-big-mistake.mp3", "wild-offroute-bitch-2.mp3",
+            "wild-offroute-bitch-3.mp3", "wild-offroute-bitch.mp3", "wild-offroute-bullshit-3.mp3",
+            "wild-offroute-bullshit-4.mp3", "wild-offroute-come-on-2.mp3", "wild-offroute-come-on.mp3",
+            "wild-offroute-haha-2.mp3", "wild-offroute-haha-3.mp3", "wild-offroute-haha.mp3",
+            "wild-offroute-no-4.mp3", "wild-offroute-no-5.mp3", "wild-offroute-no-6.mp3",
+            "wild-offroute-oh-no-4.mp3", "wild-offroute-oh-no-5.mp3", "wild-offroute-oh-no-6.mp3",
+            "wild-offroute-oh-shit-5.mp3", "wild-offroute-oh-shit-6.mp3",
+            "wild-offroute-son-of-a-bitch-2.mp3", "wild-offroute-son-of-a-bitch-3.mp3",
+            "wild-offroute-son-of-a-bitch.mp3", "wild-offroute-what-are-you-doing.mp3",
+            "wild-offroute-what-the-fuck-4.mp3", "wild-offroute-what-the-fuck-5.mp3",
+            "wild-offroute-what-the-fuck-6.mp3", "wild-offroute-what-the-hell-4.mp3",
+            "wild-offroute-what-the-hell-6.mp3", "wild-offroute-what-the-hell-did-you-do.mp3",
+            "wild-offroute-what-were-you-thinking.mp3", "wild-offroute-wrong-5.mp3",
+            "wild-offroute-wrong-6.mp3", "wild-offroute-you-idiot-4.mp3", "wild-offroute-you-idiot-5.mp3",
+            "wild-offroute-you-idiot-6.mp3", "wild-rerouting-hold-on-2.mp3", "wild-rerouting-hold-on-3.mp3",
+            "wild-rerouting-hold-on.mp3", "wild-rerouting-ill-be-back-2.mp3",
+            "wild-rerouting-ill-be-back-3.mp3", "wild-rerouting-ill-be-back.mp3",
+            "wild-rerouting-one-second-2.mp3", "wild-rerouting-wait-a-minute-2.mp3",
+            "wild-rerouting-wait-a-minute-3.mp3", "wild-rerouting-wait-a-minute.mp3",
+            "wild-speeding-big-mistake.mp3", "wild-speeding-chill-out.mp3", "wild-speeding-cop.mp3",
+            "wild-speeding-im-a-cop-2.mp3", "wild-speeding-im-a-cop-3.mp3", "wild-speeding-im-a-cop.mp3",
+            "wild-speeding-im-a-police-officer-2.mp3", "wild-speeding-im-a-police-officer-3.mp3",
+            "wild-speeding-im-a-police-officer.mp3", "wild-speeding-police-officer.mp3",
+            "wild-speeding-stop-it-2.mp3", "wild-speeding-stop-it-3.mp3", "wild-speeding-stop-it.mp3",
+            "wild-speeding-stop-that-2.mp3", "wild-speeding-stop-that.mp3", "wild-speeding-take-it-easy.mp3",
+            "wild-speeding-this-is-an-arrest-2.mp3", "wild-speeding-this-is-an-arrest.mp3",
+            // The goodbye, which is NOT an arrival: her rule, 2026-10-12. These
+            // three were flourish-arrival-hasta-* and wild-arrive-hasta-* until
+            // the mood was split out, so the pool below must carry them or
+            // "every mood has lines" is the test that catches the split.
+            "flourish-farewell-hasta-la-vista.mp3", "flourish-farewell-hasta-la-vista-2.mp3",
+            "flourish-farewell-hasta-la-vista-baby.mp3"
+        )
+        val names = files.map { VoiceLines.parse(it).first }
+        assertEquals(emptyList(), files.filterIndexed { i, _ -> names[i] == null }, "refused")
+        val have = names.filterNotNull().toSet()
+        val wild = have.filter { it.startsWith("wild-") }
+        assertTrue(wild.isNotEmpty())
+        assertEquals(emptyList(), wild.filter { Character.wildSlot(it) == null }, "a wild line with no slot")
+        assertEquals(Character.MOODS.toSet(), have.mapNotNull { Character.mood(it) }.toSet(), "every mood has lines, banter included")
+        assertTrue(have.any(Character::isCough) && have.any(Character::isNumber))
+    }
+
+    @Test
+    fun `a pool avoids its last few picks - min(4, n over 2) - so a big pool never loops`() {
+        // AGEDASHII's ruling on her "there's so many options for funny things"
+        val eight = ('a'..'h').map { "wild-offroute-line-$it" }.toSet() + "offroute"
+        val c = Character(Dice())
+        val heard = (1..20).map { c.voiceFor("offroute", emptySet(), eight, null) }
+        heard.windowed(5).forEach { assertEquals(5, it.toSet().size, "any five running are all different: $it") }
+        val four = setOf("flourish-urgent-a", "flourish-urgent-b", "flourish-urgent-c", "flourish-urgent-d")
+        val u = Character(Dice())
+        val lines = (1..12).map { u.flourish("now", "turn-left", Any(), emptyList(), four)!!.name }
+        lines.windowed(3).forEach { assertEquals(3, it.toSet().size, "four lines: the last two are avoided: $it") }
+        // memory is per pool: an urgent line does not use up a scold line
+        val both = four + "flourish-scold-x"
+        val m = Character(Dice())
+        m.flourish("now", "turn-left", Any(), emptyList(), both)
+        assertEquals("flourish-scold-x", m.flourish("far", null, null, listOf("speeding"), both)!!.name)
+        assertEquals("flourish-scold-x", m.flourish("far", null, null, listOf("speeding"), both, now = 100.0)!!.name, "a pool of one repeats")
+    }
+
+    @Test
+    fun `the memory works on the phrase - two takes of one line are the same words`() {
+        assertEquals("wild-offroute-what-the-hell", Character.phrase("wild-offroute-what-the-hell-6"))
+        assertEquals("flourish-start-its-show-time", Character.phrase("flourish-start-its-show-time-2"))
+        assertEquals("interject-cough", Character.phrase("interject-cough-2"))
+        // four phrases, three takes of one: no phrase within the last two, whatever the take
+        val pool = setOf("wild-offroute-what-the-hell", "wild-offroute-what-the-hell-4", "wild-offroute-what-the-hell-6",
+            "wild-offroute-no", "wild-offroute-haha", "wild-offroute-oh-no", "offroute")
+        val c = Character(Dice())
+        val heard = (1..12).map { Character.phrase(c.voiceFor("offroute", emptySet(), pool, null)) }
+        heard.windowed(3).forEach { assertEquals(3, it.toSet().size, "no phrase twice within three: $it") }
+        // a second flourish is never another take of the first's words
+        val takes = setOf("flourish-angry-no", "flourish-angry-no-2", "flourish-angry-haha")
+        // order, F1 rate, F2 rate; picks: F1 phrase "no", its take, F2 mood, F2 phrase
+        val f = Character(Dice(0.5, 0.0, 0.0, picks = listOf(1, 0, 0, 0)))
+        val core = VoiceLines.core("turn-left", "near", 150.0, "Turn left", null, true, setOf("dist-0.1mile", "turn-left"))!!
+        val after = f.arrange(core, emptyList(), "near", "turn-left", Any(), listOf("offroute"), takes + setOf("dist-0.1mile", "turn-left"), emptySet()).after
+        assertEquals(2, after.size)
+        assertEquals("flourish-angry-no", Character.phrase(after[0].name))
+        assertEquals("flourish-angry-haha", after[1].name, "not no + no-2: $after")
+    }
+
+    @Test
+    fun `the chain - hers, then a wild one never twice running, then the built-in`() {
+        val have = setOf("offroute", "wild-offroute-a", "wild-offroute-b")
+        val c = Character(Dice(picks = listOf(0, 0, 0)))
+        assertEquals("offroute", c.voiceFor("offroute", hers = setOf("offroute"), have = have), "her own wins")
+        val first = c.voiceFor("offroute", emptySet(), have)
+        val second = c.voiceFor("offroute", emptySet(), have)
+        assertTrue(first.startsWith("wild-") && second.startsWith("wild-"))
+        assertNotEquals(first, second, "never the same twice running")
+        assertEquals("rerouting", c.voiceFor("rerouting", emptySet(), have + "rerouting"), "no wild line: the built-in")
+        c.on = false
+        assertEquals("offroute", c.voiceFor("offroute", emptySet(), have), "off: the plain voice")
+    }
+
+    @Test
+    fun `one wild line alone takes turns with the built-in, so never twice running`() {
+        val have = setOf("continue", "wild-continue-go-on")
+        val c = Character(Dice())
+        val heard = (1..4).map { c.voiceFor("continue", emptySet(), have, "far") }
+        assertEquals(listOf("wild-continue-go-on", "continue", "wild-continue-go-on", "continue"), heard)
+        assertEquals("wild-arrive-x", Character(Dice()).voiceFor("arrive", emptySet(), setOf("wild-arrive-x"), "now"), "no built-in to take turns with")
+    }
+
+    @Test
+    fun `a slot with only wild lines is still hers, and the prompt plays one`() {
+        val have = setOf("wild-turn-left-go-left-if-you-want-to-live")
+        val c = Character(Dice())
+        val slots = c.slots(have, hers = have)
+        assertTrue("turn-left" in slots)
+        val items = VoiceLines.playlist("x", "turn-left", "now", null, "Turn left onto Grand", "Grand", true, slots) {
+            c.voiceFor(it, have, have)
+        }
+        assertEquals(listOf(Item.Clip("wild-turn-left-go-left-if-you-want-to-live", "Turn left")), items)
+        c.on = false
+        assertFalse("turn-left" in c.slots(have, hers = have))
+    }
+
+    @Test
+    fun `a wild line for a direction plays only if she imported it`() {
+        // AGEDASHII: the gate is that SHE named the direction; we never pick one from a pool.
+        val builtIn = setOf("turn-left", "wild-turn-left-go-left")
+        val c = Character(Dice())
+        assertEquals("turn-left", c.voiceFor("turn-left", emptySet(), builtIn, "near"), "built in: never")
+        assertFalse("turn-left" in c.slots(setOf("wild-turn-left-go-left")), "not a sound for the slot unless hers")
+        assertEquals("wild-turn-left-go-left", c.voiceFor("turn-left", setOf("wild-turn-left-go-left"), builtIn, "near"), "hers: yes")
+        assertTrue(Character.DIRECTIONS.containsAll(listOf("turn-left", "sharp-right", "slight-left", "uturn")))
+        assertFalse("continue" in Character.DIRECTIONS)
+    }
+
+    @Test
+    fun `urgent on now only - time words are true only at the corner - AGEDASHII's ruling`() {
+        assertNull(Character(Dice()).flourish("far", "turn-left", maneuver, emptyList(), pack), "half a mile out, NOW! is dangerous")
+        assertNull(Character(Dice()).flourish("near", "turn-left", maneuver, emptyList(), pack), "RIGHT NOW at 900 ft is false at 34 mph")
+        val banter = pack + "flourish-banter-correct"
+        assertEquals("banter", Character.mood(Character(Dice()).flourish("near", "turn-left", maneuver, emptyList(), banter)!!.name), "banter instead")
+        assertEquals("urgent", Character.mood(Character(Dice()).flourish("now", "turn-left", maneuver, emptyList(), banter)!!.name), "and urgent at the corner")
+        assertEquals("urgent", Character.mood(Character(Dice()).flourish("now", "turn-left", maneuver, emptyList(), pack)!!.name))
+        assertEquals("start", Character.mood(Character(Dice()).flourish("far", "turn-left", maneuver, listOf("start"), pack)!!.name), "far takes another mood")
+        assertNull(Character(Dice()).flourish("now", "turn-left", maneuver, listOf("offroute"), pack.filter { Character.mood(it) != "urgent" }.toSet()), "on now, urgent or nothing")
+    }
+
+    @Test
+    fun `one angry line a minute at most`() {
+        val c = Character(Dice())
+        val first = c.flourish(null, null, null, listOf("offroute"), pack, now = 0.0)!!
+        assertEquals("angry", Character.mood(first.name))
+        assertNotNull(c.flourish(null, null, null, listOf("offroute"), pack, now = 5.0), "not heard yet: a newer prompt replaced it")
+        c.heard(first.name, 5.0)
+        assertNull(c.flourish(null, null, null, listOf("offroute"), pack, now = 25.0), "the same wrong turn, 20 s after she heard one")
+        assertEquals("scold", Character.mood(c.flourish(null, null, null, listOf("offroute", "speeding"), pack, now = 30.0)!!.name), "the next mood still may")
+        assertEquals("angry", Character.mood(c.flourish(null, null, null, listOf("rerouting"), pack, now = 66.0)!!.name))
+    }
+
+    @Test
+    fun `the arrive slot's wild lines play on arriving only`() {
+        val have = setOf("arrive", "wild-arrive-mission-accomplished", "wild-arrive-choppa")
+        val c = Character(Dice())
+        assertEquals("arrive", c.voiceFor("arrive", emptySet(), have, "far"), "In 1000 ft, MISSION ACCOMPLISHED is a lie")
+        assertEquals("arrive", c.voiceFor("arrive", emptySet(), have, "near"))
+        assertTrue(c.voiceFor("arrive", emptySet(), have, "now").startsWith("wild-arrive-"))
+        val cont = setOf("continue", "wild-continue-go", "wild-continue-on")
+        assertTrue(c.voiceFor("continue", emptySet(), cont, "far").startsWith("wild-"), "other slots are wild on every band")
+    }
+
+    @Test
+    fun `no flourish on the now band but urgent - and the arrival's own now`() {
+        val c = Character(Dice())
+        val arrive = Any()
+        assertNull(c.flourish("far", "arrive", arrive, emptyList(), pack), "the arrive far and near prompts get none")
+        assertNull(c.flourish("near", "arrive", arrive, emptyList(), pack))
+        val line = c.flourish("now", "arrive", arrive, emptyList(), pack)
+        assertNotNull(line)
+        assertEquals("arrival", Character.mood(line.name))
+        assertTrue(line.soft)
+        assertNull(line.fallback, "a flourish is never said by the phone")
+    }
+
+    @Test
+    fun `the mood - arrival, angry, scold, start, urgent - among the ones she has lines for`() {
+        val c = Character(Dice())
+        val all = listOf("start", "offroute", "speeding")
+        assertEquals("angry", Character.mood(c.flourish("far", "turn-left", Any(), all, pack)!!.name))
+        assertEquals("scold", Character.mood(c.flourish("far", "turn-left", Any(), listOf("start", "speeding"), pack)!!.name))
+        assertEquals("start", Character.mood(c.flourish("far", "turn-left", Any(), listOf("start"), pack)!!.name))
+        assertEquals("urgent", Character.mood(c.flourish("now", "turn-left", Any(), emptyList(), pack)!!.name))
+        val noAngry = pack.filter { Character.mood(it) != "angry" }.toSet()
+        assertEquals("scold", Character.mood(c.flourish("far", null, null, all, noAngry)!!.name), "an empty pool falls to the next mood")
+        assertNull(c.flourish("far", null, null, emptyList(), pack), "nothing to say, nothing added")
+    }
+
+    @Test
+    fun `each mood's rate decides, one named constant each`() {
+        assertEquals(0.25, Character.RATE.getValue("urgent"))
+        assertNull(Character(Dice(0.25)).flourish("now", "turn-left", maneuver, emptyList(), pack))
+        assertNotNull(Character(Dice(0.24)).flourish("now", "turn-left", maneuver, emptyList(), pack))
+        assertNotNull(Character(Dice(0.99)).flourish("now", "arrive", maneuver, emptyList(), pack), "arrival is every time")
+        assertNull(Character(Dice(0.5)).flourish("far", null, null, listOf("offroute"), pack))
+    }
+
+    @Test
+    fun `one per maneuver across its prompts, and never the same line twice running`() {
+        val c = Character(Dice(picks = listOf(0, 0, 0)))
+        val a = c.flourish("now", "turn-left", maneuver, emptyList(), pack)
+        assertNotNull(a)
+        assertNull(c.flourish("now", "turn-left", maneuver, emptyList(), pack), "that maneuver has had its line")
+        val b = c.flourish("now", "turn-right", Any(), emptyList(), pack)
+        assertNotNull(b)
+        assertNotEquals(a.name, b.name)
+    }
+
+    @Test
+    fun `off means none of it`() {
+        val c = Character(Dice())
+        c.on = false
+        assertNull(c.flourish("now", "arrive", maneuver, emptyList(), pack))
+        assertNull(c.sorry(pack))
+        val core = core("turn-left", "near", ft(500.0), "Turn left", pack)
+        assertEquals(Character.Arranged(core.classic(), emptyList()), c.arrange(core, emptyList(), "near", "turn-left", maneuver, emptyList(), pack, emptySet()))
+    }
+
+    private fun ft(feet: Double) = feet / VoiceLines.FEET_PER_M
+    private fun core(kind: String, band: String, metres: Double?, words: String, have: Set<String>) =
+        VoiceLines.core(kind, band, metres, words, "", true, have)!!
+
+    // What the arrangement tests hear: no flourish lines unless a test adds them.
+    private val plain = setOf("dist-0.1mile", "turn-left", "exit", "continue", "interject-cough")
+    private val D = Item.Clip("dist-0.1mile", "In 500 feet,")
+    private val L = Item.Clip("turn-left", "Turn left")
+
+    @Test
+    fun `the maneuver may come first, the distance whole after it`() {
+        val first = Character(Dice(0.29, 0.99)).arrange(core("turn-left", "near", ft(500.0), "Turn left", plain), emptyList(), "near", "turn-left", Any(), emptyList(), plain, emptySet())
+        assertEquals(listOf(L, D), first.turn, "turn left, in 500 feet")
+        val classic = Character(Dice(0.3, 0.99)).arrange(core("turn-left", "near", ft(500.0), "Turn left", plain), emptyList(), "near", "turn-left", Any(), emptyList(), plain, emptySet())
+        assertEquals(listOf(D, L), classic.turn)
+        val now = Character(Dice(0.0, 0.0)).arrange(core("turn-left", "now", ft(20.0), "Turn left", plain), emptyList(), "now", "turn-left", Any(), emptyList(), plain, emptySet())
+        assertEquals(listOf(L), now.turn, "now: the maneuver alone, never rearranged, never a cough")
+    }
+
+    @Test
+    fun `the tail and street stay glued to the maneuver when it moves`() {
+        val have = plain
+        val c = VoiceLines.core("exit", "near", ft(500.0), "Take exit 2 on the right", "", true, have)!!
+        val t = Character(Dice(0.1, 0.99)).arrange(c, emptyList(), "near", "exit", Any(), emptyList(), have, emptySet()).turn
+        assertEquals(listOf(Item.Clip("exit", "Take exit 2 on the right"), Item.Speak("on the right"), D), t)
+    }
+
+    @Test
+    fun `no two far or near prompts running have the same shape`() {
+        val c = Character(Dice(0.5, 0.99, 0.5, 0.99, 0.5, 0.99))
+        fun next() = c.arrange(core("turn-left", "near", ft(500.0), "Turn left", plain), emptyList(), "near", "turn-left", Any(), emptyList(), plain, emptySet()).turn
+        assertEquals(listOf(D, L), next())
+        assertEquals(listOf(L, D), next(), "classic again would repeat the shape: flipped")
+        assertEquals(listOf(D, L), next(), "and back")
+    }
+
+    @Test
+    fun `the cough goes inside the instruction - in the join, or between the maneuver's halves`() {
+        // prompt 1: classic, cough; prompt 2: classic, no roll for the cough (the one after); prompt 3: maneuver first, cough
+        val c = Character(Dice(0.5, 0.0, 0.5, 0.1, 0.0))
+        val C = Item.Clip("interject-cough", null, soft = true)
+        assertEquals(listOf(D, C, L), c.arrange(core("turn-left", "near", ft(500.0), "Turn left", plain), emptyList(), "near", "turn-left", Any(), emptyList(), plain, emptySet()).turn)
+        assertEquals(listOf(D, L), c.arrange(core("turn-left", "near", ft(500.0), "Turn left", plain), emptyList(), "near", "turn-left", Any(), emptyList(), plain, emptySet()).turn.filter { it != C }, "never two prompts running")
+        val halves = plain + "part-continue-a" + "part-continue-b"
+        val cont = core("continue", "far", ft(500.0), "Continue straight", halves)
+        val split = c.arrange(cont, emptyList(), "far", "continue", Any(), emptyList(), halves, emptySet()).turn
+        assertEquals(listOf(Item.Clip("part-continue-a", "Continue straight"), C, Item.Clip("part-continue-b", "Continue straight"), D), split, "continue - cough - straight, then the distance")
+        assertEquals(listOf(L), Character(Dice(0.0, 0.0)).arrange(core("turn-left", "now", null, "Turn left", plain), emptyList(), "now", "turn-left", Any(), emptyList(), plain, emptySet()).turn, "never on now")
+        assertEquals(listOf(D, L), Character(Dice(0.5, Character.COUGH_RATE)).arrange(core("turn-left", "near", ft(500.0), "Turn left", plain), emptyList(), "near", "turn-left", Any(), emptyList(), plain, emptySet()).turn, "rare")
+    }
+
+    @Test
+    fun `halves only for the plain line, and never her half with the built-in half`() {
+        val C = Item.Clip("interject-cough", null, soft = true)
+        val halves = plain + "part-continue-a" + "part-continue-b"
+        val mixed = Character(Dice(0.5, 0.0)).arrange(core("continue", "far", ft(500.0), "Continue", halves), emptyList(), "far", "continue", Any(), emptyList(), halves, setOf("part-continue-a")).turn
+        assertEquals(listOf(D, C, Item.Clip("continue", "Continue")), mixed, "her a with Arnold's b: the join instead")
+        val wild = halves + "wild-continue-go-on" + "wild-continue-onward"
+        val c = Character(Dice(0.5, 0.0))
+        val core = VoiceLines.core("continue", "far", ft(500.0), "Continue", "", true, c.slots(wild), choose = { c.voiceFor(it, emptySet(), wild, "far") })!!
+        val t = c.arrange(core, emptyList(), "far", "continue", Any(), emptyList(), wild, emptySet()).turn
+        assertEquals(C, t[1], "a wild take is never split: the cough takes the join")
+        assertTrue((t[2] as Item.Clip).name.startsWith("wild-continue-"))
+    }
+
+    @Test
+    fun `edges agreed with minion 3 - a prompt with no distance keeps the shape, any prompt without a cough clears it`() {
+        val C = Item.Clip("interject-cough", null, soft = true)
+        // shape: A classic; B far with no distance neither counts nor resets; C classic again is a repeat of A, so flipped
+        val s = Character(Dice(0.5, 0.99, 0.99, 0.5, 0.99))
+        fun near() = s.arrange(core("turn-left", "near", ft(500.0), "Turn left", plain), emptyList(), "near", "turn-left", Any(), emptyList(), plain, emptySet()).turn
+        assertEquals(listOf(D, L), near())
+        s.arrange(VoiceLines.core("turn-left", "far", null, "Turn left", null, true, plain), emptyList(), "far", "turn-left", Any(), emptyList(), plain, emptySet())
+        assertEquals(listOf(L, D), near(), "flipped: the prompt between had no distance")
+        // the cough: near coughs, the "now" after it has none, so the next near may cough again
+        val c = Character(Dice(0.5, 0.0, 0.5, 0.0))
+        assertEquals(listOf(D, C, L), c.arrange(core("turn-left", "near", ft(500.0), "Turn left", plain), emptyList(), "near", "turn-left", Any(), emptyList(), plain, emptySet()).turn)
+        c.arrange(core("turn-left", "now", null, "Turn left", plain), emptyList(), "now", "turn-left", Any(), emptyList(), plain, emptySet())
+        assertEquals(listOf(L, C, D), c.arrange(core("turn-left", "near", ft(500.0), "Turn left", plain), emptyList(), "near", "turn-left", Any(), emptyList(), plain, emptySet()).turn, "a repeat of the shape is flipped, and the cough comes along")
+    }
+
+    @Test
+    fun `two flourishes only on a mistake - none on a correct turn, one at most on now and on a start`() {
+        val have = plain + setOf(
+            "flourish-urgent-do-it-now", "flourish-urgent-right-now", "flourish-angry-damn-it", "flourish-angry-no",
+            "flourish-start-hello", "flourish-start-lets-go",
+        )
+        // rolls: order, cough (high: none), F1 rate, F2 rate
+        fun near(cues: List<String>, vararg rolls: Double) = Character(Dice(*rolls))
+            .arrange(core("turn-left", "near", ft(500.0), "Turn left", have), emptyList(), "near", "turn-left", Any(), cues, have, emptySet()).after
+        assertEquals(emptyList(), near(emptyList(), 0.5, 0.99, 0.0, 0.0), "a correct turn with no banter lines: nothing timed, nothing abusive")
+        val kind = have + setOf("flourish-banter-haha", "flourish-banter-trust-me", "flourish-banter-no-problemo")
+        val happy = Character(Dice(0.5, 0.99, 0.0, 0.0)).arrange(core("turn-left", "near", ft(500.0), "Turn left", kind), emptyList(), "near", "turn-left", Any(), emptyList(), kind, emptySet()).after
+        assertTrue(happy.isNotEmpty(), "a correct turn keeps its character")
+        assertTrue(happy.all { Character.mood(it.name) == "banter" }, "enjoying itself WITH her - never urgent, never angry: $happy")
+        val lostKind = Character(Dice(0.5, 0.99, 0.0, 0.0)).arrange(core("turn-left", "near", ft(500.0), "Turn left", kind), emptyList(), "near", "turn-left", Any(), listOf("offroute"), kind, emptySet()).after
+        assertTrue(lostKind.none { Character.mood(it.name) == "banter" }, "no joke on a mistake: $lostKind")
+        val arriving = Character(Dice()).flourish("near", "arrive", Any(), emptyList(), kind)
+        assertNull(arriving, "the arrival's far and near get none, banter included")
+        val lost = near(listOf("offroute"), 0.5, 0.99, 0.0, 0.0)
+        assertEquals(2, lost.size, "a mistake may earn two")
+        assertTrue(lost.all { Character.mood(it.name) == "angry" && it.soft } && lost[0].name != lost[1].name, "$lost")
+        assertEquals(1, near(listOf("start"), 0.5, 0.99, 0.0, 0.0).size, "the start line is not buried")
+        assertEquals(1, near(listOf("offroute"), 0.5, 0.99, 0.0, Character.P_SECOND).size)
+        val now = Character(Dice(0.0, 0.0, 0.0)).arrange(core("turn-left", "now", null, "Turn left", have), emptyList(), "now", "turn-left", Any(), emptyList(), have, emptySet())
+        assertEquals(1, now.after.size, "now: one at most")
+        assertEquals("urgent", Character.mood(now.after[0].name), "DO IT NOW, where it is true")
+    }
+
+    @Test
+    fun `an exit that says its side plays only on that side, and drops the phone's tail`() {
+        val have = plain + "exit-left"
+        val left = VoiceLines.core("exit", "now", null, "Take exit 2 on the left", "", true, have)!!
+        assertEquals(listOf(Item.Clip("exit-left", "Take exit 2 on the left")), left.classic())
+        val right = VoiceLines.core("exit", "now", null, "Take exit 2 on the right", "", true, have)!!
+        assertEquals(listOf(Item.Clip("exit", "Take exit 2 on the right"), Item.Speak("on the right")), right.classic(), "no exit-right: exit plus the side")
+        assertTrue("exit-left" in Character.DIRECTIONS, "a wild exit-left must be hers")
+        assertEquals("exit-left", VoiceLines.parse("exit-left.mp3").first)
+        assertEquals("continue", Character.partSlot("part-continue-a"))
+        assertEquals("turn-left", Character.partSlot("part-turn-left-b"))
+        assertNull(Character.partSlot("part-sideways-a"))
+    }
+
+    @Test
+    fun `sorry follows the failure, and a tap line only with her tap switch`() {
+        val c = Character(Dice())
+        assertEquals("sorry", Character.mood(c.sorry(pack)!!.name))
+        assertEquals("ui", Character.mood(c.tap(pack)!!.name), "on by default: she asked for it")
+        c.taps = false
+        assertNull(c.tap(pack))
+        assertNull(Character(Dice(Character.RATE.getValue("ui"))).also { it.taps = true }.tap(pack))
+    }
+}

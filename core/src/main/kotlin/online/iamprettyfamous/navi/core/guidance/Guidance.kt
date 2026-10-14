@@ -39,6 +39,36 @@ object Guidance {
     /** The fixed distances used below [CRAWL_MS], in metres. */
     val CRAWL_BANDS_M: Map<String, Double> = linkedMapOf("far" to 250.0, "near" to 90.0, "now" to 25.0)
 
+    /**
+     * A maneuver already announced is announced again, short of "now", only
+     * once the distance has fallen below this share of where it last was. The
+     * bands move with speed: picked at a light, "far" (crawl, 250 m) fired at
+     * 178 m, then riding off at 15 m/s made "near" (300 m) due at 170 m - the
+     * same "In 600 ft, turn right" twice, 6 s apart (minion 1's emulator
+     * rides). Riding at one speed, far to near is 1/3 and crawl 90/250.
+     */
+    const val REPEAT_FRACTION = 0.6
+
+    /**
+     * A wider band is not spoken when the "now" point is less than this many
+     * seconds away at her speed: "now" is about to say it. Right after a turn
+     * the next one can come up just outside "now", and at 15 m/s "In 350 ft,
+     * turn left" then "Turn left" came 1 s apart (minion 1's rides, #4).
+     */
+    const val NOW_SOON_S = 3.0
+
+    /**
+     * "And then": the maneuver after this one is a surprise when it is closer
+     * than this many seconds at her speed - "now" (6 s) plus [NOW_SOON_S], so
+     * it cannot get a warning of its own - with [THEN_MIN_M] as the floor. At
+     * 30 mph about 120 m: 15% of maneuver pairs on 20 Bay routes (minion 1).
+     */
+    const val THEN_S = 9.0
+    const val THEN_MIN_M = 60.0
+
+    /** Never announced as "and then": the arrival is gentle, a continue or merge needs no warning. */
+    val THEN_NOT: Set<String> = setOf(ManeuverKind.ARRIVE, ManeuverKind.CONTINUE, ManeuverKind.MERGE)
+
     /** The graph's road classes, in index order. washi routing.py:116-119. */
     val ROAD_CLASSES: List<String> = listOf(
         "motorway", "motorway_link", "trunk", "trunk_link", "primary", "primary_link", "secondary",
@@ -168,7 +198,12 @@ object Guidance {
      */
     fun spoken(instruction: String?, street: String?, metres: Double?, imperial: Boolean = true, band: String = "near"): String {
         val what = if (instruction.isNullOrEmpty()) "continue" else instruction
-        val where = if (!street.isNullOrEmpty() && street !in what) " onto $street" else ""
+        // Valhalla's words are whole sentences: nothing goes after the full stop
+        // ("Continue toward CA 24/Berkeley. onto Grove Shafter Freeway", #9).
+        val sentence = what.trimEnd().let { it.endsWith(".") || it.endsWith("!") || it.endsWith("?") }
+        // Arrival has no "onto": "arrive at your destination onto Broadway" (guidance.py).
+        val arriving = "arrive" in what.lowercase() || "destination" in what.lowercase()
+        val where = if (!sentence && !arriving && !street.isNullOrEmpty() && street !in what) " onto $street" else ""
         if (band == "now") return "$what$where".trim()
         return "In ${distanceText(metres, imperial)}, $what$where".trim()
     }

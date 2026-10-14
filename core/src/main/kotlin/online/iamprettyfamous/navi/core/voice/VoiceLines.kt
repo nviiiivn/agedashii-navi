@@ -36,9 +36,10 @@ object VoiceLines {
      * How far off a distance clip may be before the phone says the distance
      * instead, as a ratio either way, inclusive. "Two hundred" for a turn a mile
      * away is a wrong instruction, and a wrong distance at speed is worse than a
-     * robot.
+     * robot. 1.25, not 1.5 (AGEDASHII, with the Flet app): at 1.5 an 800 ft
+     * prompt played "in 0.1 miles" on emulator-5556.
      */
-    const val DISTANCE_BOUND = 1.5
+    const val DISTANCE_BOUND = 1.25
 
     /**
      * What the phone says for a situation she has no clip for. `speeding` has
@@ -46,10 +47,18 @@ object VoiceLines {
      */
     val SITUATIONS: Map<String, String?> = linkedMapOf(
         "offroute" to "Off route.", "rerouting" to "Re-routing.", "start" to "Starting the route.", "speeding" to null,
+        // Her line when the app opens ("That's amazing, where are we?"): hers or
+        // nothing - a robot saying the app has opened is noise.
+        "open" to null,
+        // Before the maneuver right after this one, on this one's "now" (Follower's then).
+        "and-then" to "and then",
     )
 
     /** Every fixed name: the twelve maneuvers, then the situations. Distances are open-ended beside them. */
-    val FIXED: List<String> = ManeuverKind.MANEUVERS + SITUATIONS.keys
+    /** An exit line that says its side ("exit left, human"): played only for an exit on that side. */
+    val SIDE_SLOTS: List<String> = listOf("exit-left", "exit-right")
+
+    val FIXED: List<String> = ManeuverKind.MANEUVERS + SIDE_SLOTS + SITUATIONS.keys
 
     /** The two distances sent to her before the set was opened up; still accepted. */
     private val LEGACY_FEET = mapOf("dist-quarter" to 1320.0, "dist-half" to 2640.0)
@@ -80,7 +89,10 @@ object VoiceLines {
     fun canonical(name: String): String =
         DISTANCE.matchEntire(name)?.let { "dist-${it.groupValues[1]}${it.groupValues[2]}" } ?: name
 
-    fun isName(name: String): Boolean = name in FIXED || distanceFeet(name) != null
+    fun isName(name: String): Boolean = isSlot(name) || Character.isName(name)
+
+    /** A prompt's own name - a maneuver, a situation or a distance - that one of her clips can fill. */
+    fun isSlot(name: String): Boolean = name in FIXED || distanceFeet(name) != null
 
     /** dist-400ft -> 400, dist-0.5mile -> 2640, dist-quarter -> 1320; null for anything else or zero. */
     fun distanceFeet(name: String): Double? {
@@ -113,7 +125,8 @@ object VoiceLines {
 
     /** One thing to play: her clip (with the words it stands for), or words for the phone. */
     sealed interface Item {
-        data class Clip(val name: String, val fallback: String?) : Item
+        /** [soft]: a flourish or a cough, which any newer prompt cuts at once (Character). */
+        data class Clip(val name: String, val fallback: String?, val soft: Boolean = false) : Item
         data class Speak(val text: String) : Item
     }
 
@@ -150,26 +163,108 @@ object VoiceLines {
         imperial: Boolean,
         have: Set<String>,
         streets: Boolean = false,
-    ): List<Item> {
+        choose: (String) -> String = { it },
+    ): List<Item> = core(kind, band, metres, instruction, street, imperial, have, streets, choose)?.classic()
+        ?: listOf(Item.Speak(say))
+
+    /**
+     * One prompt's instruction as its pieces, for Character to arrange: the
+     * [distance] (far and near only), the [maneuver], and what is [glued] to it
+     * - the tail only the words carry (an exit's side, a roundabout's exit) and
+     * the street. [slot] is the clip name the maneuver was chosen for, before
+     * any wild line. Null: none of her clips applies, say our whole sentence.
+     */
+    /**
+     * "And then" and the maneuver right after this one, spoken at this one's
+     * "now": her link line (or the phone's "and then"), then the next
+     * maneuver as it would be said at its own "now" - maneuver and its tail
+     * (an exit's side, a roundabout's exit), never its distance or street.
+     * All of it soft: a newer prompt cuts it.
+     */
+    fun andThen(kind: String?, instruction: String?, imperial: Boolean, have: Set<String>, choose: (String) -> String = { it }): List<Item> {
+        val link = if ("and-then" in have) Item.Clip(choose("and-then"), "and then", soft = true) else Item.Speak("and then")
+        val next = core(kind, "now", null, instruction, null, imperial, have, false, choose)?.classic()
+            ?: listOfNotNull(kind?.let { standIn(it, imperial) }?.let { Item.Speak(it) }) +
+            listOfNotNull(afterHerLine(kind, instruction)?.let { Item.Speak(it) })
+        return listOf(link) + next.map { if (it is Item.Clip) it.copy(soft = true) else it }
+    }
+
+    data class Core(val distance: Item?, val maneuver: Item, val slot: String?, val glued: List<Item>) {
+        /** Distance, maneuver, tail: the order she has always heard. */
+        fun classic(): List<Item> = listOfNotNull(distance) + maneuver + glued
+    }
+
+    fun core(
+        kind: String?,
+        band: String?,
+        metres: Double?,
+        instruction: String?,
+        street: String?,
+        imperial: Boolean,
+        have: Set<String>,
+        streets: Boolean = false,
+        choose: (String) -> String = { it },
+    ): Core? {
         val distance = if (band == "now") null else metres
         val man = kind?.takeIf { it in ManeuverKind.MANEUVERS }
-        val manClip = man?.takeIf { it in have }
+        // An exit line that says its own side takes the place of "exit" plus
+        // the phone's "on the left" - only on an exit on that side.
+        val side = if (man == ManeuverKind.EXIT) SIDE.find(instruction.orEmpty().lowercase())?.let { "exit-${it.groupValues[1]}" } else null
+        val sided = side?.takeIf { it in have }
+        val manClip = sided ?: man?.takeIf { it in have }
         val distClip = nearestDistance(distance, have)
-        if (manClip == null && distClip == null) return listOf(Item.Speak(say))
-        val items = ArrayList<Item>()
-        if (distance != null && distance > 0.0) {
+        if (manClip == null && distClip == null) return null
+        val d = if (distance != null && distance > 0.0) {
             val spoken = "In ${spokenDistance(distance, imperial)},"
-            items += if (distClip != null) Item.Clip(distClip, spoken) else Item.Speak(spoken)
+            if (distClip != null) Item.Clip(choose(distClip), spoken) else Item.Speak(spoken)
+        } else {
+            null
         }
         val verb = bare(instruction)
-        items += if (manClip != null) Item.Clip(manClip, verb) else Item.Speak(verb)
-        if (streets && !street.isNullOrBlank() && man != ManeuverKind.ARRIVE) items += Item.Speak("onto $street")
-        return items
+        val m = if (manClip != null) Item.Clip(choose(manClip), verb) else Item.Speak(verb)
+        val glued = ArrayList<Item>()
+        // Her line replaces the verb, so what only the words carry follows it in
+        // the phone's voice: which exit off a roundabout, which side an exit is on.
+        if (manClip != null && sided == null) afterHerLine(man, instruction)?.let { glued += Item.Speak(it) }
+        if (streets && !street.isNullOrBlank() && man != ManeuverKind.ARRIVE) glued += Item.Speak("onto $street")
+        return Core(d, m, manClip, glued)
+    }
+
+    private val EXIT_NUMBER = Regex("""\btake the (\w+) exit\b""")
+    private val SIDE = Regex("""\bon the (left|right)\b""")
+
+    /**
+     * What must still be said after her clip for [man], or null. One "exit"
+     * clip serves both sides ("Exit. I insist.") and one "roundabout" clip
+     * every exit, so the side and the exit number would otherwise be lost
+     * (voicelines.py's _after_her_line, Flet v1.17.0).
+     */
+    fun afterHerLine(man: String?, instruction: String?): String? {
+        val text = instruction.orEmpty().lowercase()
+        return when (man) {
+            ManeuverKind.ROUNDABOUT -> EXIT_NUMBER.find(text)?.let { "take the ${it.groupValues[1]} exit" }
+            ManeuverKind.EXIT -> SIDE.find(text)?.let { "on the ${it.groupValues[1]}" }
+            else -> null
+        }
+    }
+
+    /**
+     * A re-route the router refused, made for the ear. Once per off-route spell
+     * ([Cues.refused]): after "off route" and "re-routing" a refusal was
+     * silence while the banner said re-routing. Valhalla's "No suitable edges
+     * near location" (error 171) on a RE-route means where she is, since the
+     * destination routed before. No "find signal": this app routes offline only.
+     */
+    fun refusal(reason: String): List<Item> {
+        val outside = reason.contains("171") || reason.contains("no suitable edges", ignoreCase = true)
+        val words = if (outside) "No route. You are outside the offline map. Ride back into it."
+        else "No new route yet. It will keep trying."
+        return listOf(Item.Speak(words))
     }
 
     /** A situation: her clip, else the phone's words, else nothing (speeding). */
-    fun situation(name: String, have: Set<String>): List<Item> {
-        if (name in have) return listOf(Item.Clip(name, SITUATIONS[name]))
+    fun situation(name: String, have: Set<String>, choose: (String) -> String = { it }): List<Item> {
+        if (name in have) return listOf(Item.Clip(choose(name), SITUATIONS[name]))
         return SITUATIONS[name]?.let { listOf(Item.Speak(it)) } ?: emptyList()
     }
 
@@ -181,6 +276,7 @@ object VoiceLines {
         ManeuverKind.UTURN to "make a U-turn", ManeuverKind.CONTINUE to "continue straight",
         ManeuverKind.MERGE to "merge", ManeuverKind.EXIT to "take the exit",
         ManeuverKind.ARRIVE to "arrive at your destination", ManeuverKind.ROUNDABOUT to "enter the roundabout",
+        "exit-left" to "take the exit on the left", "exit-right" to "take the exit on the right",
     )
 
     /** The phone's words for [name] when she has no clip, or null (speeding). */
@@ -191,9 +287,9 @@ object VoiceLines {
     }
 
     /** What the panel's play button plays: exactly what a ride would for that name. */
-    fun preview(name: String, have: Set<String>, imperial: Boolean = true): List<Item> {
+    fun preview(name: String, have: Set<String>, imperial: Boolean = true, choose: (String) -> String = { it }): List<Item> {
         val words = standIn(name, imperial)
-        if (name in have) return listOf(Item.Clip(name, words))
+        if (name in have) return listOf(Item.Clip(choose(name), words))
         return words?.let { listOf(Item.Speak(it)) } ?: emptyList()
     }
 
@@ -210,6 +306,18 @@ object VoiceLines {
     const val SPEEDING_EVERY_S = 60.0
 
     /**
+     * Within one off-route spell, seconds between two situation lines ("off
+     * route", "re-routing"). The first of a spell is never held: she is going
+     * the wrong way and must hear it. Riding away from each new route said six
+     * in 31 s (emulator-5556), talking over the new route's first turn. The
+     * turn itself is guidance, never held by this.
+     */
+    const val SITUATION_EVERY_S = 30.0
+
+    /** Back on a route this long ends the spell: going wrong after that is new, and speaks at once. */
+    const val REJOIN_S = 30.0
+
+    /**
      * Which situation lines a fix calls for - each on its EDGE, never per fix.
      * start: a route to a NEW destination is up (a re-route of the same one is
      * not); offroute: off-route just confirmed; rerouting: the first re-route
@@ -223,6 +331,13 @@ object VoiceLines {
         private var rerouted = false
         private var fast = false
         private var fastAt: Double? = null
+        private var refusalSaid = false
+        // The off-route SPELL: from the first "off route" until she has been
+        // back on a route for [REJOIN_S]. A new route puts her "on" it for a
+        // moment; riding away from it again is the same spell, not a new one.
+        private var spell = false
+        private var onSince: Double? = null
+        private var situationAt: Double? = null
 
         fun update(ok: Boolean, offRoute: Boolean, destination: Any?, reroute: Boolean, over: Boolean, now: Double): List<String> {
             val names = ArrayList<String>()
@@ -230,12 +345,34 @@ object VoiceLines {
                 this.destination = destination
                 names += "start"
             }
-            if (offRoute && !off) names += "offroute"
-            if (!offRoute) rerouted = false else if (reroute && !rerouted) {
+            if (offRoute) onSince = null else if (onSince == null) onSince = now
+            val back = onSince
+            if (spell && back != null && now - back >= REJOIN_S) {
+                spell = false
+                refusalSaid = false
+            }
+            val situation = ArrayList<String>()
+            if (offRoute && !off) situation += "offroute"
+            if (!offRoute) {
+                rerouted = false
+            } else if (reroute && !rerouted) {
                 rerouted = true
-                names += "rerouting"
+                situation += "rerouting"
             }
             off = offRoute
+            // One line per spell edge: off route OR re-routing, never both in
+            // two voices (AGEDASHII) - the burst was made of these pairs.
+            if ("offroute" in situation) situation.remove("rerouting")
+            if (situation.isNotEmpty()) {
+                // The first of a spell always speaks, at once; after that, one
+                // per SITUATION_EVERY_S while she stays lost (AGEDASHII's ruling).
+                val last = situationAt
+                if (!spell || last == null || now - last >= SITUATION_EVERY_S) {
+                    names += situation
+                    situationAt = now
+                }
+                spell = true
+            }
             val last = fastAt
             if (over && !fast && (last == null || now - last >= SPEEDING_EVERY_S)) {
                 fastAt = now
@@ -243,6 +380,13 @@ object VoiceLines {
             }
             fast = over
             return names
+        }
+
+        /** True the first time a re-route is refused in this off-route spell; the retries need no voice. */
+        fun refused(): Boolean {
+            if (refusalSaid) return false
+            refusalSaid = true
+            return true
         }
     }
 }

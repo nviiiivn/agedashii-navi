@@ -71,6 +71,21 @@ class RouteRequestTest {
         assertNull(assertNotNull(Arrival.gap(calaverasPin, end, "  ")).street)
     }
 
+    @Test
+    fun `a heading goes on the start only, whole degrees in 0 to 359`() {
+        val req = Json.parseToJsonElement(RouteRequest.motorcycle(fremont, calaverasPin, heading = -30.4)).jsonObject
+        val start = req["locations"]!!.jsonArray[0].jsonObject
+        assertEquals(330, start["heading"]!!.jsonPrimitive.content.toInt())
+        assertEquals(RouteRequest.HEADING_TOLERANCE_DEG, start["heading_tolerance"]!!.jsonPrimitive.content.toInt())
+        assertNull(req["locations"]!!.jsonArray[1].jsonObject["heading"])
+    }
+
+    @Test
+    fun `no heading, no heading field - a standstill bearing means nothing`() {
+        val req = Json.parseToJsonElement(RouteRequest.motorcycle(fremont, calaverasPin)).jsonObject
+        assertNull(req["locations"]!!.jsonArray[0].jsonObject["heading"])
+    }
+
     /** Lets the real router be fed exactly what the app will send. */
     @Test
     fun `write the request for the real router when asked`() {

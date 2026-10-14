@@ -24,6 +24,10 @@ class JdbcPlaceIndex(path: String) : PlaceIndex, AutoCloseable {
     override fun claimedCount() = con.createStatement().executeQuery(PlaceSql.CLAIMED).let { it.next(); it.getString(1).toInt() }
     override fun countedRows() = con.createStatement().executeQuery(PlaceSql.COUNTED).let { it.next(); it.getInt(1) }
     override fun hasAreas() = tables.containsAll(listOf("area", "area_tok", "kind_tok"))
+    private val columns = con.createStatement().executeQuery(PlaceSql.COLUMNS).let { rs ->
+        buildSet { while (rs.next()) add(rs.getString(2)) }
+    }
+    override fun hasAddr() = "addr" in columns
     override fun namePrefix(form: String) = prefix(PlaceSql.NAME_PREFIX, form) { getLong(1) }
     override fun kindPrefix(form: String) = prefix(PlaceSql.KIND_PREFIX, form) { getString(1) }
     override fun areaPrefix(form: String) = prefix(PlaceSql.AREA_PREFIX, form) { getLong(1) }
@@ -37,7 +41,9 @@ class JdbcPlaceIndex(path: String) : PlaceIndex, AutoCloseable {
     }
 
     override fun rows(ids: List<Long>): List<PlaceRow> = ids.chunked(PlaceSql.IN_CHUNK).flatMap { chunk ->
-        val st = con.prepareStatement((if (hasAreas()) PlaceSql.ROWS_V2 else PlaceSql.ROWS_V1) + PlaceSql.marks(chunk.size))
+        val st = con.prepareStatement((if (!hasAreas()) PlaceSql.ROWS_V1
+            else if (hasAddr()) PlaceSql.ROWS_V2 else PlaceSql.ROWS_V2_NO_ADDR) +
+            PlaceSql.marks(chunk.size))
         chunk.forEachIndexed { i, id -> st.setLong(i + 1, id) }
         val rs = st.executeQuery()
         buildList {
@@ -343,4 +349,37 @@ class PlaceSearchTest {
             Src("Tilden Regional Park", "protected area", 37.8950, -122.2450),
         )
     }
+    @Test
+    fun `an envelope address is pulled into its street and its town`() {
+        val cases = listOf(
+            Triple("4919 Telegraph Ave, Oakland", "telegraph avenue", "oakland"),
+            Triple("2201 Broadway, Oakland, CA 94612", "broadway", "oakland"),
+            Triple("500 N First St, San Jose", "north first street", "san jose"),
+            // The unit and all after it go as a phrase, or a stray "4" is welded on.
+            Triple("1234 Grand Ave Apt 4, Alameda", "grand avenue", "alameda"),
+            Triple("1500 SE 12th Pl, Renton WA 98055", "southeast 12th place", "renton"),
+            Triple("MacArthur Blvd", "macarthur boulevard", ""),
+        )
+        for ((typed, street, town) in cases) {
+            val a = PlaceSearch.parseAddress(typed)
+            assertNotNull(a, typed)
+            assertEquals(street, a.street, typed)
+            assertEquals(town, a.town, typed)
+        }
+        // Her own capitals survive; uppercasing the first letter alone would
+        // leave "Macarthur".
+        assertEquals("MacArthur Boulevard", PlaceSearch.parseAddress("MacArthur Blvd")?.label)
+        assertEquals("1500 Southeast 12th Place",
+            PlaceSearch.parseAddress("1500 SE 12th Pl, Renton WA 98055")?.label)
+    }
+
+    @Test
+    fun `what is not an address is left to the ordinary place search`() {
+        for (typed in listOf("goodwill", "Chabot Space Science Center", "ikea emeryville",
+                "37.8044,-122.2712", "geo:37.8,-122.2", "88", "", "   ",
+                "https://maps.example/@37.8,-122.2")) {
+            assertNull(PlaceSearch.parseAddress(typed), typed)
+        }
+    }
+
 }

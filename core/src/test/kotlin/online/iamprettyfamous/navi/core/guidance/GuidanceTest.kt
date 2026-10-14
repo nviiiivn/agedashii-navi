@@ -154,6 +154,91 @@ class PromptsTest {
     }
 
     @Test
+    fun `picked at a light then ridden off - the turn is said once, then at the corner`() {
+        // minion 1's rides: stopped 178 m out, "far" (crawl bands) fires; riding
+        // off at 15 m/s moves "near" to 300 m, due at once - the same words again.
+        val turn = points[20]
+        fun short(m: Double) = LatLon(turn.lat - m / 111_320.0, turn.lon)
+        val first = follower.update(short(178.0), speedMs = 0.0, now = 0.0)
+        assertTrue(first.say!!.startsWith("In "), "far, at the light")
+        assertNull(follower.update(short(170.0), speedMs = 15.0, now = 1.0).say, "not again 8 m later")
+        assertNull(follower.update(short(120.0), speedMs = 15.0, now = 4.0).say)
+        val corner = follower.update(short(85.0), speedMs = 15.0, now = 6.0)
+        assertEquals("now", corner.band)
+        assertFalse(corner.say!!.startsWith("In "))
+    }
+
+    @Test
+    fun `and then - the next maneuver, when it is too close to be warned of on its own`() {
+        val base = straightRoute(points)
+        fun m(at: Int, kind: String?, words: String) = Maneuver(words, "", 0.0, LatLon(0.0, 0.0), at, base.cumM[at], kind = kind)
+        val head = m(0, null, "head north")
+        val arrive = m(40, ManeuverKind.ARRIVE, "arrive at your destination")
+        fun ride(vararg mans: Maneuver, speed: Double?): List<Status> {
+            val f = Follower(base.copy(maneuvers = listOf(head) + mans + arrive), offrouteM = 45.0)
+            return points.take(22).mapIndexed { i, p -> f.update(p, speedMs = speed, now = i.toDouble()) }.filter { it.say != null }
+        }
+        // turn left, then turn right 56 m on: at 15 m/s the limit is 135 m
+        val close = ride(m(20, ManeuverKind.TURN_LEFT, "turn left"), m(21, ManeuverKind.TURN_RIGHT, "turn right"), speed = 15.0)
+        val nowLeft = close.first { it.band == "now" && it.kind == ManeuverKind.TURN_LEFT }
+        assertEquals(ManeuverKind.TURN_RIGHT, nowLeft.then?.kind)
+        assertTrue(close.filter { it.band != "now" }.all { it.then == null }, "only on the now prompt")
+        // 111 m on: too far at a crawl (60 m floor), close enough at 15 m/s
+        val gap = listOf(m(20, ManeuverKind.TURN_LEFT, "turn left"), m(22, ManeuverKind.TURN_RIGHT, "turn right"))
+        assertNull(ride(*gap.toTypedArray(), speed = null).first { it.band == "now" }.then)
+        assertEquals(ManeuverKind.TURN_RIGHT, ride(*gap.toTypedArray(), speed = 15.0).first { it.band == "now" }.then?.kind)
+        // never an arrival, a continue or a merge
+        val cont = ride(m(20, ManeuverKind.TURN_LEFT, "turn left"), m(21, ManeuverKind.CONTINUE, "continue"), speed = 15.0)
+        assertNull(cont.first { it.band == "now" }.then)
+    }
+
+    @Test
+    fun `a warning is not spoken when now is a moment away`() {
+        // minion 1's #4: right after a turn the next came up just outside "now";
+        // at 15 m/s "In 350 ft, turn left" then "Turn left" 1 s apart.
+        val turn = points[20]
+        fun short(m: Double) = LatLon(turn.lat - m / 111_320.0, turn.lon)
+        assertNull(follower.update(short(100.0), speedMs = 15.0, now = 0.0).say, "now is under a second away")
+        assertEquals("now", follower.update(short(88.0), speedMs = 15.0, now = 1.0).band)
+        val far = Follower(route, offrouteM = 45.0)
+        assertEquals("near", far.update(short(290.0), speedMs = 15.0, now = 0.0).band, "13 s out: still warned")
+    }
+
+    @Test
+    fun `a continue is said once`() {
+        val base = route
+        val cont = base.copy(maneuvers = listOf(
+            base.maneuvers[0],
+            Maneuver("Continue toward CA 24.", "Grove Shafter Freeway", 0.0, LatLon(0.0, 0.0), 20, base.cumM[20], kind = ManeuverKind.CONTINUE),
+            base.maneuvers[2],
+        ))
+        val f = Follower(cont, offrouteM = 45.0)
+        val said = points.take(21).mapIndexedNotNull { i, p -> f.update(p, speedMs = 15.0, now = i.toDouble()).say }
+            .filter { "CA 24" in it }
+        assertEquals(1, said.size, "said: $said")
+    }
+
+    @Test
+    fun `slowing down still gets the nearer warning`() {
+        val turn = points[20]
+        fun short(m: Double) = LatLon(turn.lat - m / 111_320.0, turn.lon)
+        assertEquals("far", follower.update(short(850.0), speedMs = 15.0, now = 0.0).band)
+        assertEquals("near", follower.update(short(85.0), speedMs = 2.0, now = 60.0).band, "85 m is well under 0.6 x 850")
+    }
+
+    @Test
+    fun `arriving at walking pace still says so`() {
+        // Below a crawl the "now" band is 25 m, the same as the arrival distance:
+        // the fix that arrives is the only one that can say it (Flet v1.17.0).
+        points.dropLast(1).forEachIndexed { i, p -> follower.update(p, speedMs = 1.0, now = i.toDouble()) }
+        val end = points.last()
+        val there = follower.update(LatLon(end.lat - 0.00015, end.lon), speedMs = 1.0, now = 100.0) // ~17 m short
+        assertTrue(there.arrived)
+        assertEquals("arrive at your destination", there.say)
+        assertNull(follower.update(end, speedMs = 1.0, now = 101.0).say, "and only once")
+    }
+
+    @Test
     fun `the head instruction is never a prompt`() {
         // next_maneuver starts at maneuvers[1]; "head north" is what she is already doing.
         val status = follower.update(points[0], speedMs = 15.0, now = 0.0)
@@ -189,6 +274,15 @@ class WordingTest {
         assertTrue(near.startsWith("In "))
         assertEquals("turn left onto Grand Ave", now)
         assertEquals("continue", Guidance.spoken(null, null, 20.0, band = "now"))
+    }
+
+    @Test
+    fun `nothing goes after a sentence's full stop`() {
+        assertEquals(
+            "In 0.5 mi, Continue toward CA 24/Berkeley/Walnut Creek.",
+            Guidance.spoken("Continue toward CA 24/Berkeley/Walnut Creek.", "Grove Shafter Freeway", 800.0, band = "far"),
+        )
+        assertEquals("turn left onto Grand Ave", Guidance.spoken("turn left", "Grand Ave", 20.0, band = "now"))
     }
 
     @Test

@@ -93,7 +93,11 @@ fun WhereToPanel(
             }
             Line(state.status, if (state.usable) p.ink(Role.TEXT2) else p.warn, TypeScale.MID_SP, maxLines = 3)
             val words = state.query.trim()
-            if (words.length >= 2 && state.hits.isEmpty()) {
+            // "Nothing" only for an answer to what is in the box now: it showed
+            // for seconds while "chabot" was typed and the search still ran on "c".
+            if (words.length >= 2 && state.hitsFor.trim() != words) {
+                Line("Searching…", p.ink(Role.TEXT2), TypeScale.MID_SP)
+            } else if (words.length >= 2 && state.hits.isEmpty()) {
                 Line("Nothing by that name on this phone", p.ink(Role.TEXT2), TypeScale.MID_SP)
             }
             LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {

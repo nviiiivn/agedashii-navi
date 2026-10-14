@@ -3,6 +3,7 @@ package online.iamprettyfamous.navi.core.voice
 import online.iamprettyfamous.navi.core.voice.VoiceLines.Item
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -64,34 +65,32 @@ class VoiceLinesTest {
     }
 
     @Test
-    fun `the nearest clip she HAS, within one and a half times, the smaller on a tie`() {
+    fun `the nearest clip she HAS, within a quarter either way, the shorter on a tie`() {
+        assertEquals(1.25, VoiceLines.DISTANCE_BOUND)
         assertEquals("dist-200ft", VoiceLines.nearestDistance(ft(200.0), have))
-        assertEquals("dist-400ft", VoiceLines.nearestDistance(ft(300.0), have), "300 is nearer 400 than 200 by ratio")
-        assertEquals("dist-200ft", VoiceLines.nearestDistance(ft(Math.sqrt(200.0 * 400.0)), have), "a tie goes to the smaller")
-        assertEquals("dist-1500ft", VoiceLines.nearestDistance(ft(2250.0), have), "exactly x1.5 is inside")
-        assertNull(VoiceLines.nearestDistance(ft(2260.0), have), "past x1.5: the phone says it")
-        assertEquals("dist-200ft", VoiceLines.nearestDistance(ft(134.0), have))
-        assertNull(VoiceLines.nearestDistance(ft(133.0), have))
+        assertEquals("dist-400ft", VoiceLines.nearestDistance(ft(350.0), have), "350 is nearer 400 than 200 by ratio")
+        assertNull(VoiceLines.nearestDistance(ft(300.0), have), "300 is 1.33 from 400 and 1.5 from 200: the phone says it")
+        assertEquals("dist-200ft", VoiceLines.nearestDistance(ft(250.0), have), "exactly x1.25 is inside")
+        assertNull(VoiceLines.nearestDistance(ft(251.0), have))
+        assertEquals("dist-1500ft", VoiceLines.nearestDistance(ft(1875.0), have))
         assertNull(VoiceLines.nearestDistance(ft(5280.0), have), "two hundred for a mile away is a wrong instruction")
         assertNull(VoiceLines.nearestDistance(null, have))
+        // A true tie, between two clips 1.25 x 1.25 apart, goes to the shorter.
+        val tie = setOf("dist-400ft", "dist-625ft")
+        assertEquals("dist-400ft", VoiceLines.nearestDistance(ft(500.0), tie))
     }
 
     @Test
-    fun `minion 3's shared vectors - the Flet app runs the same table`() {
-        // tests/test_voicelines.py WhichDistance, prompt in feet.
-        val arnold = setOf("dist-200ft", "dist-400ft", "dist-800ft", "dist-1500ft")
+    fun `her renamed set covers what minion 3 measured, and no further`() {
+        // minion 5's pack: each clip says what its name says. At x1.25 they cover
+        // 422-660, 1056-1650, 2112-3300 and 4224-6600 ft (minion 3).
+        val set = setOf("dist-0.1mile", "dist-quarter", "dist-half", "dist-1mile")
         val want = mapOf(
-            148.0 to "dist-200ft", 200.0 to "dist-200ft", 279.0 to "dist-200ft", 289.0 to "dist-400ft",
-            820.0 to "dist-800ft", 1640.0 to "dist-1500ft", 2247.0 to "dist-1500ft", 98.0 to null,
-            2251.0 to null, 5280.0 to null, 0.0 to null, Math.sqrt(200.0 * 400.0) to "dist-200ft",
+            423.0 to "dist-0.1mile", 528.0 to "dist-0.1mile", 660.0 to "dist-0.1mile", 421.0 to null, 661.0 to null,
+            800.0 to null, 1056.0 to "dist-quarter", 1320.0 to "dist-quarter", 1650.0 to "dist-quarter", 1651.0 to null,
+            2112.0 to "dist-half", 3300.0 to "dist-half", 4224.0 to "dist-1mile", 6600.0 to "dist-1mile", 6601.0 to null,
         )
-        for ((feet, clip) in want) assertEquals(clip, VoiceLines.nearestDistance(ft(feet), arnold), "$feet ft")
-        assertNull(VoiceLines.nearestDistance(null, arnold))
-        assertNull(VoiceLines.nearestDistance(ft(400.0), emptySet()))
-        val legacy = setOf("dist-quarter", "dist-0.5mile", "dist-2miles")
-        assertEquals("dist-quarter", VoiceLines.nearestDistance(ft(1300.0), legacy))
-        assertEquals("dist-0.5mile", VoiceLines.nearestDistance(ft(2700.0), legacy))
-        assertEquals("dist-2miles", VoiceLines.nearestDistance(ft(10000.0), legacy))
+        for ((feet, clip) in want) assertEquals(clip, VoiceLines.nearestDistance(ft(feet), set), "$feet ft")
     }
 
     @Test
@@ -139,6 +138,102 @@ class VoiceLinesTest {
     }
 
     @Test
+    fun `after her exit clip the side, after her roundabout clip the exit number`() {
+        // Her one "exit" clip serves both sides and her one "roundabout" clip every exit.
+        val right = VoiceLines.playlist(
+            "x", "exit", "near", ft(400.0), "Take exit 2 on the right toward Oakland.", "", true, have,
+        )
+        assertEquals(listOf(Item.Clip("dist-400ft", "In 400 feet,"), Item.Clip("exit", "Take exit 2 on the right toward Oakland"), Item.Speak("on the right")), right)
+        val left = VoiceLines.playlist("x", "exit", "now", null, "Take the exit on the left.", "", true, have)
+        assertEquals(listOf(Item.Clip("exit", "Take the exit on the left"), Item.Speak("on the left")), left)
+        val round = VoiceLines.playlist(
+            "x", "roundabout", "now", null, "Enter the roundabout and take the 2nd exit onto Main Street.", "Main Street", true, have + "roundabout",
+        )
+        assertEquals(listOf(Item.Clip("roundabout", "Enter the roundabout and take the 2nd exit"), Item.Speak("take the 2nd exit")), round)
+    }
+
+    @Test
+    fun `the phone's own sentence already says it, so nothing follows`() {
+        val say = "Take the exit on the left."
+        assertEquals(listOf(Item.Speak(say)), VoiceLines.playlist(say, "exit", "now", null, say, "", true, have - "exit"))
+        val distOnly = VoiceLines.playlist("x", "exit", "near", ft(400.0), say, "", true, have - "exit")
+        assertEquals(listOf(Item.Clip("dist-400ft", "In 400 feet,"), Item.Speak("Take the exit on the left")), distOnly)
+        assertNull(VoiceLines.afterHerLine("exit", "Take the exit."), "no side in the words: nothing invented")
+        assertNull(VoiceLines.afterHerLine("turn-left", "Turn left on the right side"))
+    }
+
+    @Test
+    fun `a refused re-route in words she can act on, and never 'find signal'`() {
+        val outside = VoiceLines.refusal("no route: No suitable edges near location")
+        assertEquals(listOf(Item.Speak("No route. You are outside the offline map. Ride back into it.")), outside)
+        assertEquals(outside, VoiceLines.refusal("no route: {\"error_code\":171}"))
+        assertEquals(listOf(Item.Speak("No new route yet. It will keep trying.")), VoiceLines.refusal("no route: No path could be found for input"))
+    }
+
+    @Test
+    fun `a refusal is said once per off-route spell`() {
+        val cues = VoiceLines.Cues()
+        val dest = Any()
+        cues.update(true, true, dest, true, false, 0.0)
+        assertTrue(cues.refused())
+        assertFalse(cues.refused(), "the retries need no voice")
+        cues.update(true, true, dest, true, false, 12.0)
+        assertFalse(cues.refused(), "still the same spell")
+        cues.update(true, false, dest, false, false, 20.0)
+        cues.update(true, true, dest, true, false, 30.0)
+        assertFalse(cues.refused(), "10 s on a new route and off again: the same spell")
+        cues.update(true, false, dest, false, false, 40.0)
+        cues.update(true, false, dest, false, false, 71.0)
+        cues.update(true, true, dest, true, false, 75.0)
+        assertTrue(cues.refused(), "back on route 31 s, then lost again: a new spell may say it")
+    }
+
+    @Test
+    fun `riding away from each new route - the first says so at once, then one line per 30 s`() {
+        // AGEDASHII's ruling, from 5556: six situation lines in 31 s.
+        val cues = VoiceLines.Cues()
+        val dest = Any()
+        cues.update(true, false, dest, false, false, 0.0)
+        assertEquals(listOf("offroute"), cues.update(true, true, dest, true, false, 10.0), "the first always, at once - one line, not two")
+        assertEquals(emptyList(), cues.update(true, false, dest, false, false, 11.0), "the new route puts her on it")
+        assertEquals(emptyList(), cues.update(true, true, dest, false, false, 17.5), "off it again: held")
+        assertEquals(emptyList(), cues.update(true, true, dest, true, false, 22.6))
+        cues.update(true, false, dest, false, false, 23.6)
+        assertEquals(emptyList(), cues.update(true, true, dest, false, false, 30.7))
+        cues.update(true, false, dest, false, false, 40.5)
+        assertEquals(listOf("offroute"), cues.update(true, true, dest, false, false, 41.0), "30 s after the last line, one more")
+        cues.update(true, false, dest, false, false, 45.0)
+        cues.update(true, false, dest, false, false, 76.0)
+        assertEquals(listOf("offroute"), cues.update(true, true, dest, true, false, 80.0), "back on route 31 s: a new spell speaks at once")
+    }
+
+    @Test
+    fun `and then - her link and the next maneuver as at its own now, all soft`() {
+        val mine = setOf("and-then", "turn-right", "exit")
+        assertEquals(
+            listOf(Item.Clip("and-then", "and then", soft = true), Item.Clip("turn-right", "Turn right", soft = true)),
+            VoiceLines.andThen("turn-right", "Turn right onto Main Street.", true, mine),
+        )
+        assertEquals(
+            listOf(Item.Clip("and-then", "and then", soft = true), Item.Clip("exit", "Take exit 5 on the right", soft = true), Item.Speak("on the right")),
+            VoiceLines.andThen("exit", "Take exit 5 on the right.", true, mine), "the side survives",
+        )
+        assertEquals(listOf(Item.Speak("and then"), Item.Speak("turn left")), VoiceLines.andThen("turn-left", "Turn left onto Grand.", true, emptySet()), "no clips: the phone, never the whole instruction")
+        assertEquals("and then", VoiceLines.standIn("and-then"))
+    }
+
+    @Test
+    fun `open - her line on launch, or nothing at all`() {
+        assertEquals("open", VoiceLines.parse("open.mp3").first)
+        assertTrue("open" in VoiceLines.FIXED)
+        assertNull(VoiceLines.standIn("open"), "no robot saying the app has opened")
+        assertEquals(emptyList(), VoiceLines.situation("open", have))
+        assertEquals(listOf(Item.Clip("open", null)), VoiceLines.situation("open", have + "open"))
+        assertEquals(VoiceLines.Source.SILENT, VoiceLines.source("open", have))
+        assertEquals("open", Character.wildSlot("wild-open-where-are-we"))
+    }
+
+    @Test
     fun `situations - hers, the phone's, or for speeding nothing`() {
         assertEquals(listOf(Item.Clip("offroute", "Off route.")), VoiceLines.situation("offroute", have))
         assertEquals(listOf(Item.Speak("Re-routing.")), VoiceLines.situation("rerouting", emptySet()))
@@ -154,9 +249,9 @@ class VoiceLinesTest {
         val dest = Any()
         assertEquals(listOf("start"), cues.update(true, false, dest, false, false, 0.0))
         assertEquals(emptyList(), cues.update(true, false, dest, false, false, 1.0), "the same destination is no new start")
-        assertEquals(listOf("offroute"), cues.update(true, true, dest, false, false, 2.0))
-        assertEquals(listOf("rerouting"), cues.update(true, true, dest, true, false, 3.0))
-        assertEquals(emptyList(), cues.update(true, true, dest, true, false, 15.0), "once per off-route spell")
+        assertEquals(listOf("offroute"), cues.update(true, true, dest, true, false, 2.0), "off route OR re-routing, never both")
+        assertEquals(emptyList(), cues.update(true, true, dest, true, false, 3.0), "once per off-route spell")
+        assertEquals(emptyList(), cues.update(true, true, dest, true, false, 15.0))
         assertEquals(listOf("speeding"), cues.update(true, false, dest, false, true, 20.0))
         assertEquals(emptyList(), cues.update(true, false, dest, false, false, 21.0))
         assertEquals(emptyList(), cues.update(true, false, dest, false, true, 30.0), "not again inside a minute")

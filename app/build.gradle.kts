@@ -19,8 +19,8 @@ android {
         applicationId = "online.iamprettyfamous.agedashii.navikt"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 9
+        versionName = "0.9.0"
         // Both phones are arm64; x86_64 is only for the emulator on Tower, and
         // -PnaviAbis=arm64-v8a leaves its 22 MB out of the APK she downloads.
         ndk {
@@ -37,7 +37,16 @@ android {
 
     // The map tiles are gzip'd inside the archive already; squeezing them again
     // only slows the first-start unpack. The tar and the places list do shrink.
-    androidResources { noCompress += listOf("pmtiles") }
+    androidResources {
+        noCompress += listOf("pmtiles")
+        // -PnoVoice: the app WITHOUT her Arnold set, to hand to someone else.
+        // Her words: "i just need the option there so i can ship it without".
+        // The clips stay on the build machine; the app falls through to the
+        // phone's own voice and Settings > Import voice takes a voicepack.
+        if (providers.gradleProperty("noVoice").isPresent) {
+            ignoreAssetsPatterns += listOf("voice")
+        }
+    }
 
     // Robolectric needs the real resources to render Compose for the screenshots.
     testOptions { unitTests.isIncludeAndroidResources = true }
@@ -49,6 +58,24 @@ android {
 // MANIFEST). 217 MB, never in git. Without the property the APK carries no
 // data and the app says what is missing, as before.
 providers.gradleProperty("naviData").orNull?.let { dir ->
+    // Fail HERE, not on her phone. The app reads assets/data/MANIFEST, so the
+    // folder given must HOLD data/: pointing at data/ itself put every file one
+    // level too high, and a clean install asked her to copy the map by cable
+    // (navi-kotlin-20260928.apk, caught on emulator-5556, 2026-09-28).
+    require(file(dir).resolve("data/MANIFEST").isFile) {
+        "-PnaviData=$dir holds no data/MANIFEST: pass the folder that CONTAINS data/, not data/ itself"
+    }
+    // An APK she installs carries her built-in voice (tools/stage-voice.sh);
+    // a fresh checkout has none, because the clips are never committed.
+    // A build FOR HER must carry her voice - shipping an APK that silently
+    // had none happened once already (navi v1.16.0, Flet) and is caught
+    // here rather than on her phone. A -PnoVoice build is the deliberate
+    // exception: that one is for other people.
+    require(providers.gradleProperty("noVoice").isPresent ||
+        file("src/main/assets/voice").listFiles().orEmpty().any { it.isFile }) {
+        "no built-in voice in app/src/main/assets/voice: run tools/stage-voice.sh " +
+            "before building her APK, or pass -PnoVoice to build one without it"
+    }
     androidComponents {
         onVariants { variant -> variant.sources.assets?.addStaticSourceDirectory(dir) }
     }

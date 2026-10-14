@@ -1,5 +1,7 @@
 package online.iamprettyfamous.navi.record
 
+import online.iamprettyfamous.navi.sync.RideSync
+
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -162,6 +164,7 @@ class RideService : Service() {
             ))
             Log.i(TAG, "finished: ${r?.count} rows, exported $exported, error $error")
             running = false
+            if (exported.isNotEmpty()) RideSync.kick(this, "ride ended")
             after()
         }
     }

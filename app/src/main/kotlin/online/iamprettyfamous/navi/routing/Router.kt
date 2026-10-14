@@ -77,12 +77,12 @@ object Router {
     }
 
     /** Route from [from] to [to]; [done] runs on the router thread with the route or the reason there is none. */
-    fun route(from: LatLon, to: LatLon, imperial: Boolean, done: (RouteLine) -> Unit) {
+    fun route(from: LatLon, to: LatLon, imperial: Boolean, heading: Double? = null, done: (RouteLine) -> Unit) {
         handler.post {
             val v = valhalla ?: return@post done(RouteLine(ok = false, reason = _state.value.why))
             val t0 = SystemClock.elapsedRealtime()
             val line = try {
-                ValhallaRoute.parse(v.routeRaw(RouteRequest.motorcycle(from, to, imperial)))
+                ValhallaRoute.parse(v.routeRaw(RouteRequest.motorcycle(from, to, imperial, heading)))
             } catch (e: Throwable) {
                 // Valhalla's own text ("ValhallaError(code=442, No path could
                 // be found for input)") reached her screen once; say it plainly.

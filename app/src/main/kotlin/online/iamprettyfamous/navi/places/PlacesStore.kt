@@ -26,6 +26,10 @@ class AndroidPlaceIndex(file: File) : PlaceIndex {
     override fun claimedCount() = db.rawQuery(PlaceSql.CLAIMED, null).use { it.moveToFirst(); it.getString(0).toInt() }
     override fun countedRows() = db.rawQuery(PlaceSql.COUNTED, null).use { it.moveToFirst(); it.getInt(0) }
     override fun hasAreas() = tables.containsAll(listOf("area", "area_tok", "kind_tok"))
+    private val columns = db.rawQuery(PlaceSql.COLUMNS, null).use { c ->
+        buildSet { while (c.moveToNext()) add(c.getString(1)) }
+    }
+    override fun hasAddr() = "addr" in columns
     override fun namePrefix(form: String) = prefix(PlaceSql.NAME_PREFIX, form) { getLong(0) }
     override fun kindPrefix(form: String) = prefix(PlaceSql.KIND_PREFIX, form) { getString(0) }
     override fun areaPrefix(form: String) = prefix(PlaceSql.AREA_PREFIX, form) { getLong(0) }
@@ -34,7 +38,9 @@ class AndroidPlaceIndex(file: File) : PlaceIndex {
         db.rawQuery(sql, arrayOf(form, PlaceSql.until(form))).use { c -> buildSet { while (c.moveToNext()) add(c.read()) } }
 
     override fun rows(ids: List<Long>): List<PlaceRow> = ids.chunked(PlaceSql.IN_CHUNK).flatMap { chunk ->
-        val sql = (if (hasAreas()) PlaceSql.ROWS_V2 else PlaceSql.ROWS_V1) + PlaceSql.marks(chunk.size)
+        val sql = (if (!hasAreas()) PlaceSql.ROWS_V1
+            else if (hasAddr()) PlaceSql.ROWS_V2 else PlaceSql.ROWS_V2_NO_ADDR) +
+            PlaceSql.marks(chunk.size)
         db.rawQuery(sql, chunk.map { it.toString() }.toTypedArray()).use { c ->
             buildList {
                 while (c.moveToNext()) add(
@@ -42,6 +48,7 @@ class AndroidPlaceIndex(file: File) : PlaceIndex {
                         c.getLong(0), c.getString(1), c.getString(2), c.getDouble(3), c.getDouble(4),
                         c.getDouble(5), c.getInt(6) != 0,
                         if (c.isNull(7)) null else c.getLong(7), if (c.isNull(8)) null else c.getLong(8),
+                        if (c.isNull(9)) null else c.getString(9),
                     ),
                 )
             }
@@ -75,6 +82,8 @@ object PlacesStore {
         val status: String = "",
         val usable: Boolean = false,
         val ms: Long? = null,
+        /** The query [hits] answer - behind [query] while a search runs. */
+        val hitsFor: String = "",
     )
 
     private val _state = MutableStateFlow(State())
@@ -129,7 +138,7 @@ object PlacesStore {
             if (ticket != latest) return@post
             val ms = SystemClock.elapsedRealtime() - t0
             Log.i(TAG, "'$text': ${hits.size} in $ms ms" + (hits.firstOrNull()?.let { " - first ${it.name} (${it.detail})" } ?: ""))
-            _state.value = _state.value.copy(query = text, hits = hits, ms = ms)
+            _state.value = _state.value.copy(query = text, hits = hits, ms = ms, hitsFor = text)
         }
     }
 }
