@@ -10,7 +10,8 @@ name: ios
 # Two Macs per push. One makes the IPA she installs. The other builds the same
 # app for the iPhone simulator, opens it at Oakland City Hall, and publishes a
 # screenshot and the app's console, so a crash on launch shows up here and not
-# on her phone. The simulator one is an Apple Silicon Mac because Compose ships
+# on her phone. It also rides up Broadway on a route, for the router, the
+# turn-by-turn and the voice. The simulator one is an Apple Silicon Mac because Compose ships
 # no Intel simulator build.
 on:
   push:
@@ -194,14 +195,29 @@ jobs:
           xcrun simctl bootstatus "$udid" -b > /dev/null
           xcrun simctl install "$udid" "$app"
           xcrun simctl privacy "$udid" grant location-always "$id" || xcrun simctl privacy "$udid" grant location "$id"
+          # A ride: parked at City Hall for 15 s while the route to Broadway and
+          # 40th is worked out, then up Broadway at 25 mph, one fix a second, as
+          # a GPS gives them. Screens at 40 s and 90 s into the ride.
           xcrun simctl location "$udid" set 37.8044,-122.2712
-          xcrun simctl launch --console-pty --terminate-running-process "$udid" "$id" > "$out/console.txt" 2>&1 &
-          sleep 45
-          xcrun simctl io "$udid" screenshot "$out/screen.png"
+          SIMCTL_CHILD_XNAV_SMOKE_DEST=37.8282,-122.2565 \
+            xcrun simctl launch --console-pty --terminate-running-process "$udid" "$id" > "$out/console.txt" 2>&1 &
+          sleep 15
+          python3 - > "$RUNNER_TEMP/ride.txt" <<'PY2'
+          import math
+          way = [(37.8044, -122.2712), (37.8085, -122.2691), (37.8154, -122.2655), (37.8235, -122.2612), (37.8282, -122.2565)]
+          for (a, b), (c, d) in zip(way, way[1:]):
+              m = math.hypot((c - a) * 111320, (d - b) * 111320 * math.cos(math.radians(a)))
+              n = max(1, round(m / 11.2))
+              for k in range(n):
+                  print(f"{a + (c - a) * k / n:.6f},{b + (d - b) * k / n:.6f}")
+          PY2
+          ( while read -r ll; do xcrun simctl location "$udid" set "$ll"; sleep 1; done < "$RUNNER_TEMP/ride.txt" ) &
+          sleep 40; xcrun simctl io "$udid" screenshot "$out/screen-40s.png"
+          sleep 50; xcrun simctl io "$udid" screenshot "$out/screen-90s.png"
           running=no
           xcrun simctl spawn "$udid" launchctl list | grep -q "$id" && running=yes
           for f in ~/Library/Logs/DiagnosticReports/Xnav*; do [ -e "$f" ] && cp "$f" "$out/"; done
-          echo "still running after 45 s: $running"
+          echo "still running after the ride: $running"
           echo "::group::console (last 200 lines)"; tail -200 "$out/console.txt"; echo "::endgroup::"
           ls "$out"
           [ "$running" = yes ]

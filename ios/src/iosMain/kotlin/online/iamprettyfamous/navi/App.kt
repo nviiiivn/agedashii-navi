@@ -60,6 +60,7 @@ import online.iamprettyfamous.navi.ui.WhereToPanel
 import online.iamprettyfamous.navi.ui.palette
 import online.iamprettyfamous.navi.voice.Voice
 import platform.Foundation.NSBundle
+import platform.Foundation.NSProcessInfo
 import platform.UIKit.UIApplication
 
 /**
@@ -116,6 +117,19 @@ class RideScreen(mapHost: MapHost, private val routerHost: RouterHost) {
         applyVoice()
         Voice.start()
         Voice.opening()
+        smokeRoute()
+    }
+
+    /**
+     * CI's simulator run sets XNAV_SMOKE_DEST="lat,lon" (ios.yml) and drives a
+     * ride up Broadway, so the router, guidance and the voice are exercised
+     * there before her phone ever is. Nothing on a phone sets it.
+     */
+    private fun smokeRoute() {
+        val dest = NSProcessInfo.processInfo.environment["XNAV_SMOKE_DEST"] as? String ?: return
+        val (lat, lon) = dest.split(",").mapNotNull { it.trim().toDoubleOrNull() }.takeIf { it.size == 2 } ?: return
+        println("[smoke] routing to $lat,$lon")
+        Navigator.go(LatLon(lat, lon), settings.imperial)
     }
 
     private fun applyVoice() {
