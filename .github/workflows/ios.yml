@@ -3,29 +3,39 @@ name: ios
 # The iPhone/iPad build of xnav.k, unsigned: SideStore or AltStore signs it
 # with her free Apple ID on install, so no certificate lives here.
 #
-# macOS runners bill at ten times the Linux rate, so only a push to the ios
-# branch builds (GitHub only offers the by-hand button for workflows on the
-# default branch, which this one is not), and a newer push cancels the run
-# before it.
+# Only a push to the ios branch builds (GitHub only offers the by-hand button
+# for workflows on the default branch, which this one is not), and a newer
+# push cancels the run before it. The repo is public, so the Macs are free.
+#
+# Two Macs per push. One makes the IPA she installs. The other builds the same
+# app for the iPhone simulator, opens it at Oakland City Hall, and publishes a
+# screenshot and the app's console, so a crash on launch shows up here and not
+# on her phone. The simulator one is an Apple Silicon Mac because Compose ships
+# no Intel simulator build.
 on:
   push:
     branches: [ios]
   workflow_dispatch:
-    inputs:
-      runner:
-        description: 'macos-15-intel (arm64 Macs sometimes never start), or macos-latest'
-        default: 'macos-15-intel'
 
 concurrency:
   group: ios-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
-  contents: write     # the release the IPA is published to
+  contents: write     # the release the IPA and the screenshot are published to
 
 jobs:
   ipa:
-    runs-on: ${{ inputs.runner || 'macos-15-intel' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - kind: device
+            runner: macos-15-intel
+          - kind: simulator
+            runner: macos-15
+    name: ${{ matrix.kind }}
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
 
@@ -91,6 +101,7 @@ jobs:
       # whole log is kept: Kotlin's errors come out long before the end, so
       # a failure prints every error line first, then the tail.
       - name: Archive, unsigned
+        if: matrix.kind == 'device'
         run: |
           log="$RUNNER_TEMP/xcodebuild.log"
           xcodebuild archive \
@@ -109,6 +120,7 @@ jobs:
       # for the Payload and its Info.plist, so a green run means a file that
       # installs, not one that merely exists.
       - name: Package the IPA
+        if: matrix.kind == 'device'
         run: |
           set -euo pipefail
           app="$(find "$RUNNER_TEMP/Xnav.xcarchive/Products/Applications" -maxdepth 1 -name '*.app' | head -1)"
@@ -126,6 +138,7 @@ jobs:
       # Onto a release, not an Actions artifact: the account's artifact
       # storage is full, and release assets do not count against it.
       - name: Publish the IPA
+        if: matrix.kind == 'device'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -135,3 +148,74 @@ jobs:
             --notes "Unsigned; SideStore or AltStore signs it on install." \
             || gh release view "$tag" --repo "$GITHUB_REPOSITORY" > /dev/null
           gh release upload "$tag" --repo "$GITHUB_REPOSITORY" --clobber "$RUNNER_TEMP/xnav-k.ipa"
+
+      # Debug, for readable crash reports. The simulator build is unsigned
+      # like the device one, then signed ad hoc ("-") so the simulator will run
+      # it: on Apple Silicon nothing launches without at least that.
+      - name: Build for the simulator
+        if: matrix.kind == 'simulator'
+        run: |
+          log="$RUNNER_TEMP/xcodebuild.log"
+          xcodebuild build \
+            -project iosApp/Xnav.xcodeproj -scheme Xnav -configuration Debug \
+            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$RUNNER_TEMP/dd" ARCHS=arm64 ONLY_ACTIVE_ARCH=NO \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            > "$log" 2>&1 && { tail -20 "$log"; exit 0; }
+          echo "::group::every error line"
+          grep -nE '(^| )(e|error): |error:|FAILED|What went wrong|Could not resolve|Unresolved reference' "$log" | head -300
+          echo "::endgroup::"
+          tail -150 "$log"
+          exit 1
+
+      # Opened where she lives, with location already allowed, then left for
+      # 45 s: long enough for the map, the places search and the router to load.
+      # A crash, or an app that is no longer running at the end, fails the job.
+      - name: Open it in the simulator
+        if: matrix.kind == 'simulator'
+        run: |
+          set -uo pipefail
+          app="$RUNNER_TEMP/dd/Build/Products/Debug-iphonesimulator/Xnav.app"
+          id=online.iamprettyfamous.agedashii.navikt
+          out="$RUNNER_TEMP/sim"; mkdir -p "$out"
+          find "$app/Frameworks" -maxdepth 1 \( -name '*.framework' -o -name '*.dylib' \) -exec codesign -f -s - {} \; 2>/dev/null
+          codesign -f -s - "$app"
+          udid="$(xcrun simctl list devices available -j | python3 -c '
+          import json, re, sys
+          d = json.load(sys.stdin)["devices"]
+          ios = sorted((k for k in d if "iOS" in k), key=lambda k: [int(n) for n in re.findall(r"\d+", k)])
+          for k in reversed(ios):
+              phones = [x for x in d[k] if x["name"].startswith("iPhone")]
+              if phones:
+                  print(phones[-1]["udid"]); break
+          ')"
+          xcrun simctl list devices | grep "$udid"
+          xcrun simctl boot "$udid"
+          xcrun simctl bootstatus "$udid" -b > /dev/null
+          xcrun simctl install "$udid" "$app"
+          xcrun simctl privacy "$udid" grant location-always "$id" || xcrun simctl privacy "$udid" grant location "$id"
+          xcrun simctl location "$udid" set 37.8044,-122.2712
+          xcrun simctl launch --console-pty --terminate-running-process "$udid" "$id" > "$out/console.txt" 2>&1 &
+          sleep 45
+          xcrun simctl io "$udid" screenshot "$out/screen.png"
+          running=no
+          xcrun simctl spawn "$udid" launchctl list | grep -q "$id" && running=yes
+          for f in ~/Library/Logs/DiagnosticReports/Xnav*; do [ -e "$f" ] && cp "$f" "$out/"; done
+          echo "still running after 45 s: $running"
+          echo "::group::console (last 200 lines)"; tail -200 "$out/console.txt"; echo "::endgroup::"
+          ls "$out"
+          [ "$running" = yes ]
+
+      - name: Publish the screenshot and the console
+        if: always() && matrix.kind == 'simulator'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          out="$RUNNER_TEMP/sim"
+          [ -d "$out" ] || exit 0
+          tag="ios-${GITHUB_REF_NAME}"
+          gh release create "$tag" --repo "$GITHUB_REPOSITORY" --prerelease \
+            --target "$GITHUB_SHA" --title "xnav.k for iPhone and iPad ($GITHUB_REF_NAME)" \
+            --notes "Unsigned; SideStore or AltStore signs it on install." \
+            || gh release view "$tag" --repo "$GITHUB_REPOSITORY" > /dev/null
+          cd "$out" && for f in *; do cp "$f" "sim-$f"; gh release upload "$tag" --repo "$GITHUB_REPOSITORY" --clobber "sim-$f"; done
