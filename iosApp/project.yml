@@ -1,0 +1,162 @@
+# The iPhone/iPad app: a SwiftUI shell around XnavKit.framework (the Kotlin
+# half, Gradle module :ios), MapLibre's map view and Valhalla's router.
+# Generated into Xnav.xcodeproj by `xcodegen generate` on the CI Mac; the
+# .xcodeproj is never committed, so this file is the whole project.
+name: Xnav
+
+options:
+  deploymentTarget:
+    # Valhalla's package declares iOS 16.4 as its floor.
+    iOS: "16.4"
+
+packages:
+  # 6.31.0 (2026-09-11): the newest release older than two weeks. pmtiles://
+  # sources arrived in 6.8.0 and local-file PMTiles are in its PMTilesExample;
+  # MLNMapView.styleJSON, which loadStyle uses, is in its header.
+  MapLibre:
+    url: https://github.com/maplibre/maplibre-gl-native-distribution
+    exactVersion: 6.31.0
+  # 0.6.3 carries Valhalla 3.6.3, the version her routing tiles are built
+  # with. 0.6.4 moves Valhalla on, and Valhalla only warns about tiles from
+  # another version before routing on misread data.
+  ValhallaMobile:
+    url: https://github.com/Rallista/valhalla-mobile
+    exactVersion: 0.6.3
+  # ValhallaConfig lives here, not in the Valhalla product, and the router
+  # names it. 0.5.4 is what valhalla-mobile 0.6.3's Package.resolved pins; the
+  # URL is its own, .git and all, so SwiftPM sees one package, not two.
+  ValhallaModels:
+    url: https://github.com/Rallista/valhalla-openapi-models-swift.git
+    exactVersion: 0.5.4
+
+schemes:
+  Xnav:
+    build:
+      targets:
+        Xnav: all
+    run:
+      config: Debug
+    archive:
+      config: Release
+
+targets:
+  Xnav:
+    type: application
+    platform: iOS
+    sources:
+      - path: Sources
+      - path: Assets.xcassets
+      # Folder references, so each lands in the bundle as a folder of the same
+      # name: the Kotlin side looks for resourcePath/styles, /glyphs, /voice
+      # and data/<file> (DataFiles.kt). The styles and glyphs are the Android
+      # app's own; data/ and voice/ are fetched by the CI job before this runs.
+      - path: ../app/src/main/assets/styles
+        type: folder
+        buildPhase: resources
+      - path: ../app/src/main/assets/glyphs
+        type: folder
+        buildPhase: resources
+      - path: Resources/data
+        type: folder
+        buildPhase: resources
+      - path: Resources/voice
+        type: folder
+        buildPhase: resources
+    dependencies:
+      - package: MapLibre
+      - package: ValhallaMobile
+        product: Valhalla
+      - package: ValhallaModels
+        product: ValhallaConfigModels
+    preBuildScripts:
+      # The standard Kotlin Multiplatform direct integration: Gradle builds
+      # XnavKit.framework for exactly the SDK, architecture and configuration
+      # Xcode is building, before any Swift that imports it is compiled. Every
+      # build, because Xcode cannot see into Gradle's inputs.
+      - name: Build XnavKit (Kotlin)
+        basedOnDependencyAnalysis: false
+        script: |
+          if [ "YES" = "$OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED" ]; then
+            echo "Skipping Gradle: the IDE has already built XnavKit"
+            exit 0
+          fi
+          set -e
+          cd "$SRCROOT/.."
+          # -PiosOnly leaves the Android app out of the build (settings.gradle.kts),
+          # so this Mac needs no Android SDK.
+          ./gradlew :ios:embedAndSignAppleFrameworkForXcode -PiosOnly
+    settings:
+      base:
+        PRODUCT_NAME: Xnav
+        # The Android app's id, so both phones' builds are one app by name.
+        PRODUCT_BUNDLE_IDENTIFIER: online.iamprettyfamous.agedashii.navikt
+        # The Android app's versionName and versionCode; the About screen reads both.
+        MARKETING_VERSION: 0.9.0
+        CURRENT_PROJECT_VERSION: 9
+        TARGETED_DEVICE_FAMILY: "1,2"
+        SWIFT_VERSION: "5.0"
+        SWIFT_STRICT_CONCURRENCY: minimal
+        GENERATE_INFOPLIST_FILE: NO
+        # XcodeGen presets AppIcon, and the catalog has no icon set yet: left
+        # in, the asset compiler goes looking for one that is not there.
+        ASSETCATALOG_COMPILER_APPICON_NAME: ""
+        # Unsigned: the CI archives without a certificate and SideStore or
+        # AltStore signs with her own Apple ID on install.
+        CODE_SIGNING_ALLOWED: NO
+        CODE_SIGNING_REQUIRED: NO
+        CODE_SIGN_IDENTITY: ""
+        # Gradle writes outside the sandbox's allowed paths; the Kotlin plugin
+        # stops the build with its own error if this is left on.
+        ENABLE_USER_SCRIPT_SANDBOXING: NO
+        # Where embedAndSignAppleFrameworkForXcode assembles the framework. It
+        # also links it into BUILT_PRODUCTS_DIR; this is for when it does not.
+        FRAMEWORK_SEARCH_PATHS:
+          - $(inherited)
+          - $(SRCROOT)/../ios/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)
+        # XnavKit is a static framework that no link phase knows about, and its
+        # places search calls the system sqlite3.
+        OTHER_LDFLAGS:
+          - $(inherited)
+          - -framework
+          - XnavKit
+          - -lsqlite3
+    info:
+      path: Info.plist
+      properties:
+        CFBundleDisplayName: xnav.k
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSRequiresIPhoneOS: true
+        # Guidance and her recorded voice keep going with the screen locked.
+        UIBackgroundModes:
+          - location
+          - audio
+        NSLocationWhenInUseUsageDescription: xnav.k uses your location for turn-by-turn directions and the ride log, including while the screen is off.
+        NSLocationAlwaysAndWhenInUseUsageDescription: xnav.k uses your location for turn-by-turn directions and the ride log, including while the screen is off.
+        NSMicrophoneUsageDescription: The rev counter reads engine speed from the exhaust note. The microphone is used only while the rev counter is switched on.
+        # Compose draws at 120 Hz only with this; without it ProMotion phones cap at 60.
+        CADisableMinimumFrameDurationOnPhone: true
+        UIApplicationSupportsIndirectInputEvents: true
+        # Ride logs are written to Documents; these put them in the Files app.
+        UIFileSharingEnabled: true
+        LSSupportsOpeningDocumentsInPlace: true
+        UIRequiresFullScreen: false
+        # One ride at a time: a second iPad window would be a second map, a
+        # second GPS consumer and a second ride log.
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        # A launch screen is what lets the app use the whole screen (without one
+        # iOS letterboxes it), and Night's background instead of white keeps a
+        # start in the dark from flashing her.
+        UILaunchScreen:
+          UIColorName: LaunchBackground
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
