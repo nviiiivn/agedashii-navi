@@ -3,4 +3,5 @@ Xnav.xcodeproj/
 Info.plist
 # Her map pack and voice, fetched by the CI job: too big for git, and the
 # site already serves them.
-Resources/
+Resources/data/
+Resources/voice/
