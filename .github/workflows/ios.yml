@@ -1,0 +1,126 @@
+name: ios
+
+# The iPhone/iPad build of xnav.k, unsigned: SideStore or AltStore signs it
+# with her free Apple ID on install, so no certificate lives here.
+#
+# Started by hand, like the Flet app's ipa.yml: macOS runners bill at ten
+# times the Linux rate, so a push never spends that by accident.
+on:
+  workflow_dispatch:
+    inputs:
+      runner:
+        description: 'macos-15-intel (arm64 Macs sometimes never start), or macos-latest'
+        default: 'macos-15-intel'
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write     # the release the IPA is published to
+
+jobs:
+  ipa:
+    runs-on: ${{ inputs.runner }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # The iOS plugins and Compose call iOS 26 APIs; the image's default
+      # Xcode is older. The newest one it has, not a named one, so an image
+      # update needs no edit here.
+      - name: Use the newest Xcode
+        run: |
+          x="$(python3 -c 'import glob, re; print(max(glob.glob("/Applications/Xcode_[0-9]*.app"), key=lambda p: [int(n) for n in re.findall(r"\d+", p)]))')"
+          sudo xcode-select -s "$x"
+          xcodebuild -version
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      # Kotlin/Native downloads its toolchain (~1 GB) on first use; kept
+      # between runs so a rebuild does not pay for it again.
+      - uses: actions/cache@v4
+        with:
+          path: ~/.konan
+          key: konan-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('gradle/libs.versions.toml') }}
+
+      # Her map and her voice ride inside the app, and neither is in git: the
+      # same files her phone downloads from the site, checked against the
+      # pack's own MANIFEST before anything is built on them.
+      - name: Fetch the map pack and the voice
+        run: |
+          set -euo pipefail
+          mkdir -p iosApp/Resources/data iosApp/Resources/voice "$RUNNER_TEMP/pack"
+          curl -fsSL -o "$RUNNER_TEMP/bayarea.navipack" https://xnav.alola.lol/bayarea.navipack
+          curl -fsSL -o "$RUNNER_TEMP/voice.zip" https://xnav.alola.lol/arnold.voicepack.zip
+          unzip -q "$RUNNER_TEMP/bayarea.navipack" -d "$RUNNER_TEMP/pack"
+          python3 - "$RUNNER_TEMP/pack" iosApp/Resources/data <<'PY'
+          import hashlib, os, shutil, sys
+          src, dst = sys.argv[1], sys.argv[2]
+          for line in open(os.path.join(src, "MANIFEST")):
+              parts = line.rstrip("\n").split("\t")
+              if len(parts) != 3:
+                  continue
+              name, size, sha = parts
+              path = os.path.join(src, name)
+              h = hashlib.sha256()
+              with open(path, "rb") as f:
+                  for block in iter(lambda: f.read(1 << 20), b""):
+                      h.update(block)
+              if os.path.getsize(path) != int(size) or h.hexdigest() != sha:
+                  sys.exit(f"{name}: not the file the MANIFEST names")
+              shutil.move(path, os.path.join(dst, name))
+              print(f"ok {name} {size}")
+          PY
+          unzip -q -j "$RUNNER_TEMP/voice.zip" -d iosApp/Resources/voice
+          echo "voice: $(ls iosApp/Resources/voice | wc -l) clips"
+
+      - name: Generate the Xcode project
+        run: |
+          brew install xcodegen
+          cd iosApp && xcodegen generate
+
+      # The Xcode build runs Gradle itself (a build phase in project.yml) to
+      # make XnavKit.framework, so this one command builds both halves.
+      - name: Archive, unsigned
+        run: |
+          set -o pipefail
+          xcodebuild archive \
+            -project iosApp/Xnav.xcodeproj -scheme Xnav -configuration Release \
+            -sdk iphoneos -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/Xnav.xcarchive" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            | tail -200
+
+      # An .ipa is a zip with the app under Payload/. Opened again and checked
+      # for the Payload and its Info.plist, so a green run means a file that
+      # installs, not one that merely exists.
+      - name: Package the IPA
+        run: |
+          set -euo pipefail
+          app="$(find "$RUNNER_TEMP/Xnav.xcarchive/Products/Applications" -maxdepth 1 -name '*.app' | head -1)"
+          mkdir -p "$RUNNER_TEMP/ipa/Payload"
+          cp -R "$app" "$RUNNER_TEMP/ipa/Payload/"
+          (cd "$RUNNER_TEMP/ipa" && zip -qry "$RUNNER_TEMP/xnav-k.ipa" Payload)
+          python3 - "$RUNNER_TEMP/xnav-k.ipa" <<'PY'
+          import os, sys, zipfile
+          names = zipfile.ZipFile(sys.argv[1]).namelist()
+          if not [n for n in names if n.startswith("Payload/") and n.endswith(".app/Info.plist") and n.count("/") == 2]:
+              sys.exit("no app Info.plist under Payload/")
+          print(f"ok: {os.path.getsize(sys.argv[1]):,} bytes, {len(names)} entries")
+          PY
+
+      # Onto a release, not an Actions artifact: the account's artifact
+      # storage is full, and release assets do not count against it.
+      - name: Publish the IPA
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="ios-${GITHUB_REF_NAME}"
+          gh release create "$tag" --repo "$GITHUB_REPOSITORY" --prerelease \
+            --target "$GITHUB_SHA" --title "xnav.k for iPhone and iPad ($GITHUB_REF_NAME)" \
+            --notes "Unsigned; SideStore or AltStore signs it on install." \
+            || gh release view "$tag" --repo "$GITHUB_REPOSITORY" > /dev/null
+          gh release upload "$tag" --repo "$GITHUB_REPOSITORY" --clobber "$RUNNER_TEMP/xnav-k.ipa"
