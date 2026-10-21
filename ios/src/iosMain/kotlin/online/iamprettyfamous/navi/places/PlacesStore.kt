@@ -28,23 +28,23 @@ import online.iamprettyfamous.navi.ui.format
 import platform.darwin.dispatch_async
 import platform.darwin.dispatch_get_main_queue
 import platform.darwin.dispatch_queue_create
-import platform.sqlite3.SQLITE_NULL
-import platform.sqlite3.SQLITE_OK
-import platform.sqlite3.SQLITE_OPEN_READONLY
-import platform.sqlite3.SQLITE_ROW
-import platform.sqlite3.sqlite3
-import platform.sqlite3.sqlite3_bind_text
-import platform.sqlite3.sqlite3_close
-import platform.sqlite3.sqlite3_column_double
-import platform.sqlite3.sqlite3_column_int64
-import platform.sqlite3.sqlite3_column_text
-import platform.sqlite3.sqlite3_column_type
-import platform.sqlite3.sqlite3_errmsg
-import platform.sqlite3.sqlite3_finalize
-import platform.sqlite3.sqlite3_open_v2
-import platform.sqlite3.sqlite3_prepare_v2
-import platform.sqlite3.sqlite3_step
-import platform.sqlite3.sqlite3_stmt
+import sqlite.SQLITE_NULL
+import sqlite.SQLITE_OK
+import sqlite.SQLITE_OPEN_READONLY
+import sqlite.SQLITE_ROW
+import cnames.structs.sqlite3
+import sqlite.sqlite3_bind_text
+import sqlite.sqlite3_close
+import sqlite.sqlite3_column_double
+import sqlite.sqlite3_column_int64
+import sqlite.sqlite3_column_text
+import sqlite.sqlite3_column_type
+import sqlite.sqlite3_errmsg
+import sqlite.sqlite3_finalize
+import sqlite.sqlite3_open_v2
+import sqlite.sqlite3_prepare_v2
+import sqlite.sqlite3_step
+import cnames.structs.sqlite3_stmt
 
 /**
  * [PlaceIndex] on the iPhone's own SQLite (the C library, read-only), running

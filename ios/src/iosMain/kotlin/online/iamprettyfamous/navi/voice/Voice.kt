@@ -21,6 +21,9 @@ import platform.AVFAudio.AVSpeechSynthesisVoice
 import platform.AVFAudio.AVSpeechSynthesizer
 import platform.AVFAudio.AVSpeechSynthesizerDelegateProtocol
 import platform.AVFAudio.AVSpeechUtterance
+// setActive is declared in a category of AVAudioSession, which Kotlin/Native
+// hands over as extension functions that have to be imported to be seen.
+import platform.AVFAudio.setActive
 import platform.Foundation.NSError
 import platform.Foundation.NSURL
 import platform.darwin.NSObject

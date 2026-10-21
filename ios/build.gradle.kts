@@ -34,6 +34,10 @@ val sharedUi = tasks.register<Sync>("sharedUi") {
 kotlin {
     val xcf = XCFramework("XnavKit")
     listOf(iosArm64(), iosSimulatorArm64()).forEach { target ->
+        // The system SQLite the places search reads (PlacesStore.kt).
+        target.compilations.getByName("main").cinterops.create("sqlite") {
+            definitionFile.set(project.file("src/nativeInterop/cinterop/sqlite.def"))
+        }
         target.binaries.framework {
             baseName = "XnavKit"
             isStatic = true

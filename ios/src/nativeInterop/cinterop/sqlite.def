@@ -1,0 +1,9 @@
+# The SQLite every iPhone already has (libsqlite3 in the SDK). Kotlin/Native
+# ships no platform binding for it, so this is the binding: only sqlite3.h's
+# own declarations, linked against the system library. Its two handle types
+# are opaque in the header, so they arrive as cnames.structs.sqlite3 and
+# cnames.structs.sqlite3_stmt.
+package = sqlite
+headers = sqlite3.h
+headerFilter = sqlite3.h
+linkerOpts = -lsqlite3
