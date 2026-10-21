@@ -5,7 +5,7 @@ Run from anywhere with the flet venv (audio.py imports flet):
     PYTHONPATH=<NVII-DASH>/apps/navi:<NVII-DASH>/packages/agedashii-washi \
         /home/nvii/venvs/flet/bin/python tools/golden_rpm.py
 
-Writes core/src/test/resources/golden/rpm.json. Every input that Kotlin cannot
+Writes core/src/jvmTest/resources/golden/rpm.json. Every input that Kotlin cannot
 regenerate bit-for-bit (anything from Python's `random`) is written out as
 samples, so both sides analyse exactly the same numbers.
 """

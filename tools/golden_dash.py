@@ -3,7 +3,7 @@
     PYTHONPATH=<NVII-DASH>/apps/navi:<NVII-DASH>/packages/agedashii-washi \
         /home/nvii/venvs/flet/bin/python tools/golden_dash.py
 
-Writes core/src/test/resources/golden/dash.json. The palettes and constants
+Writes core/src/jvmTest/resources/golden/dash.json. The palettes and constants
 are read straight off theme.py, ui.py and gauges.py. Each gauge is BUILT by the
 Python and its Flet controls are taken apart: every text it shows, the angle
 it turns, the fraction it fills and the colour it paints - so the Kotlin can be

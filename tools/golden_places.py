@@ -3,7 +3,7 @@
     PYTHONPATH=<NVII-DASH>/apps/navi:<NVII-DASH>/packages/agedashii-washi \
         /home/nvii/venvs/flet/bin/python tools/golden_places.py
 
-Writes core/src/test/resources/golden/places.json: the sun's altitude and the
+Writes core/src/jvmTest/resources/golden/places.json: the sun's altitude and the
 next sunrise and sunset for a spread of places and times, and what
 parse_point and parse_gpx made of a list of awkward inputs.
 """

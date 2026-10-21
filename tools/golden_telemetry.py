@@ -3,7 +3,7 @@
     PYTHONPATH=<NVII-DASH>/apps/navi:<NVII-DASH>/packages/agedashii-washi \
         /home/nvii/venvs/flet/bin/python tools/golden_telemetry.py
 
-Writes core/src/test/resources/golden/telemetry.json. Each scenario is a list
+Writes core/src/jvmTest/resources/golden/telemetry.json. Each scenario is a list
 of operations on one telemetry.Ride, replayed exactly by the Kotlin test, and
 everything the Ride produced: the row each call returned, the in-memory
 window, the summary, the CSV, GPX and JSON exports, the JSONL file byte for
