@@ -81,7 +81,7 @@ class Motion {
 
     private var zeroRoll = 0.0
     private var zeroPitch = 0.0
-    private val seen = sortedSetOf<String>()
+    private val seen = mutableSetOf<String>()
     private val errors = linkedMapOf<String, String>()
     private val history = ArrayDeque<Pair<Double, Double?>>()
 
@@ -219,7 +219,7 @@ class Motion {
 
     fun zeroed(): Zeroed = Zeroed(zeroRoll != 0.0 || zeroPitch != 0.0, Py.round(zeroRoll, 1), Py.round(zeroPitch, 1))
 
-    fun available(): Available = Available(seen.toList(), LinkedHashMap(errors))
+    fun available(): Available = Available(seen.sorted(), LinkedHashMap(errors))
 
     /**
      * The current values, named for the ride-log columns, peaks included. A key

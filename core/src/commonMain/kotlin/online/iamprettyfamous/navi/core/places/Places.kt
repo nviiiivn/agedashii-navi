@@ -142,7 +142,7 @@ object Places {
     /** Python's float(): any Unicode decimal digit counts, as `\d` matched it. */
     private fun number(text: String): Double? {
         val ascii = buildString(text.length) {
-            for (c in text) append(if (Character.isDigit(c)) '0' + Character.digit(c, 10) else c)
+            for (c in text) append(if (c.isDigit()) '0' + c.digitToInt() else c)
         }
         return ascii.toDoubleOrNull()
     }

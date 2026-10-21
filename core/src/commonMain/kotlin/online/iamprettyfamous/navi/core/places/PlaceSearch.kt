@@ -272,7 +272,7 @@ object PlaceSearch {
         val kindsFor = words.map { w -> if (v2) forms(w).flatMapTo(HashSet()) { index.kindPrefix(it) } else emptySet() }
         val areasFor = words.map { w -> if (v2) forms(w).flatMapTo(HashSet()) { index.areaPrefix(it) } else emptySet() }
         // At least one word is in the name.
-        val pool = byName.flatMapTo(sortedSetOf()) { it }.toList()
+        val pool = byName.flatMapTo(HashSet()) { it }.sorted()
         val rows = index.rows(pool).sortedBy { it.id }
 
         class Kept(val dcost: Double, val dist: Double?, val row: PlaceRow, val srcs: List<String>)

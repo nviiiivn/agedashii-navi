@@ -2,6 +2,7 @@ package online.iamprettyfamous.navi.core.map
 
 import online.iamprettyfamous.navi.core.Disk
 import okio.Path.Companion.toPath
+import okio.use
 
 /**
  * The bits of a PMTiles v3 header the camera and the style need. Read from the

@@ -216,7 +216,7 @@ data class Hud(val layout: Layout, val anchor: Anchor, val wide: Boolean, val gr
             return listOf(false, true)
                 .flatMap { wide -> Anchor.entries.mapNotNull { plan(DashState(), layout, wide, it) } }
                 .flatMap { it.groups }.flatMap { it.items }.flatMap { it.reads }.flatMap { it.channels }
-                .toSortedSet()
+                .distinct().sorted().toSet()
         }
     }
 }

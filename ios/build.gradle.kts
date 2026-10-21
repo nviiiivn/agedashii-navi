@@ -33,7 +33,7 @@ val sharedUi = tasks.register<Sync>("sharedUi") {
 
 kotlin {
     val xcf = XCFramework("XnavKit")
-    listOf(iosArm64(), iosSimulatorArm64(), iosX64()).forEach { target ->
+    listOf(iosArm64(), iosSimulatorArm64()).forEach { target ->
         target.binaries.framework {
             baseName = "XnavKit"
             isStatic = true
