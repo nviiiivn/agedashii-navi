@@ -137,7 +137,7 @@ class RideMapController(context: Context) {
             val unreadable = present && mapDir.list() == null
             return problem(if (unreadable) Problem.UNREADABLE_STORAGE else Problem.NO_TILES)
         }
-        val h = header ?: PmtilesHeader.read(file)?.also { header = it } ?: return problem(Problem.BAD_TILES)
+        val h = header ?: PmtilesHeader.read(file.path)?.also { header = it } ?: return problem(Problem.BAD_TILES)
         placeCamera(m, h)
         // A theme with no map style still gets a map - Night's - but SAYS so. It
         // used to swap silently, and a fallback nobody can see is

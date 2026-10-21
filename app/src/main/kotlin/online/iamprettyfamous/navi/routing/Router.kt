@@ -52,7 +52,7 @@ object Router {
                 _state.value = State(why = "no routing file - copy $TILES_NAME to ${tar.parent}")
                 return@post
             }
-            when (val check = TileVersionGuard.check(tar)) {
+            when (val check = TileVersionGuard.check(tar.path)) {
                 is TileCheck.Refused -> {
                     _state.value = State(why = check.reason)
                     return@post

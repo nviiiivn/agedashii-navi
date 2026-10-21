@@ -3,7 +3,7 @@
     PYTHONPATH=<NVII-DASH>/apps/navi:<NVII-DASH>/packages/agedashii-washi \
         /home/nvii/projects/agedashii/venv/bin/python tools/golden_route.py
 
-Writes core/src/test/resources/golden/route.json: a winding route, every
+Writes core/src/jvmTest/resources/golden/route.json: a winding route, every
 position asked about, and what routing.progress / next_maneuver / remaining and
 guidance.Follower answered. All inputs are written out, so Kotlin replays
 exactly what Python saw. `eta` is left out - it is local clock time and would
