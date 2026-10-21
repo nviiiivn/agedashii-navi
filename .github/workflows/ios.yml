@@ -83,16 +83,23 @@ jobs:
           cd iosApp && xcodegen generate
 
       # The Xcode build runs Gradle itself (a build phase in project.yml) to
-      # make XnavKit.framework, so this one command builds both halves.
+      # make XnavKit.framework, so this one command builds both halves. The
+      # whole log is kept: Kotlin's errors come out long before the end, so
+      # a failure prints every error line first, then the tail.
       - name: Archive, unsigned
         run: |
-          set -o pipefail
+          log="$RUNNER_TEMP/xcodebuild.log"
           xcodebuild archive \
             -project iosApp/Xnav.xcodeproj -scheme Xnav -configuration Release \
             -sdk iphoneos -destination 'generic/platform=iOS' \
             -archivePath "$RUNNER_TEMP/Xnav.xcarchive" \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
-            | tail -200
+            > "$log" 2>&1 && { tail -40 "$log"; exit 0; }
+          echo "::group::every error line"
+          grep -nE '(^| )(e|error): |error:|FAILED|What went wrong|Could not resolve|Unresolved reference' "$log" | head -300
+          echo "::endgroup::"
+          tail -150 "$log"
+          exit 1
 
       # An .ipa is a zip with the app under Payload/. Opened again and checked
       # for the Payload and its Info.plist, so a green run means a file that
