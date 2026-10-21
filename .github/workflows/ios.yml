@@ -195,11 +195,12 @@ jobs:
           xcrun simctl bootstatus "$udid" -b > /dev/null
           xcrun simctl install "$udid" "$app"
           xcrun simctl privacy "$udid" grant location-always "$id" || xcrun simctl privacy "$udid" grant location "$id"
-          # A ride: parked at City Hall while the route to Broadway and 40th is
-          # worked out, then along that route's own line at 25 mph, one fix a
+          # A ride: parked at City Hall while the route to Grand Avenue by the
+          # lake is worked out (up Broadway, then turns, so the voice has turns
+          # to call), then along that route's own line at 25 mph, one fix a
           # second, as a GPS gives them. Screens at 40, 90 and 180 s in.
           xcrun simctl location "$udid" set 37.8044,-122.2712
-          SIMCTL_CHILD_XNAV_SMOKE_DEST=37.8282,-122.2565 \
+          SIMCTL_CHILD_XNAV_SMOKE_DEST=37.8112,-122.2624 \
             xcrun simctl launch --console-pty --terminate-running-process "$udid" "$id" > "$out/console.txt" 2>&1 &
           for i in $(seq 60); do grep -q '^\[smoke-route\]' "$out/console.txt" && break; sleep 1; done
           grep -m1 '^\[smoke-route\]' "$out/console.txt" | python3 -c '
@@ -221,7 +222,16 @@ jobs:
               left += d
           ' > "$RUNNER_TEMP/ride.txt" || echo "no route line from the app"
           echo "ride: $(wc -l < "$RUNNER_TEMP/ride.txt") fixes"
-          ( while read -r ll; do xcrun simctl location "$udid" set "$ll"; sleep 1; done < "$RUNNER_TEMP/ride.txt" ) &
+          # simctl takes most of a second itself, so the clock, not a sleep,
+          # keeps the fixes a second apart.
+          python3 -c '
+          import subprocess, sys, time
+          t = time.monotonic()
+          for ll in open(sys.argv[2]).read().split():
+              subprocess.run(["xcrun", "simctl", "location", sys.argv[1], "set", ll])
+              t += 1.0
+              time.sleep(max(0.0, t - time.monotonic()))
+          ' "$udid" "$RUNNER_TEMP/ride.txt" &
           sleep 40; xcrun simctl io "$udid" screenshot "$out/screen-40s.png"
           sleep 50; xcrun simctl io "$udid" screenshot "$out/screen-90s.png"
           sleep 90; xcrun simctl io "$udid" screenshot "$out/screen-180s.png"
