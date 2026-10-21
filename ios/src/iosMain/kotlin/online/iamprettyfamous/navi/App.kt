@@ -33,6 +33,8 @@ import online.iamprettyfamous.navi.core.dash.Hud
 import online.iamprettyfamous.navi.core.dash.Layout
 import online.iamprettyfamous.navi.core.dash.TurnBanner
 import online.iamprettyfamous.navi.core.geo.LatLon
+import online.iamprettyfamous.navi.data.PackImport
+import online.iamprettyfamous.navi.host.FileHost
 import online.iamprettyfamous.navi.core.nowSeconds
 import online.iamprettyfamous.navi.core.theme.Role
 import online.iamprettyfamous.navi.dash.HudOverlay
@@ -75,7 +77,7 @@ import platform.UIKit.UIApplication
  * The composables it draws are the Android app's own files (ios/build.gradle.kts).
  */
 @OptIn(ExperimentalComposeUiApi::class)
-class RideScreen(mapHost: MapHost, private val routerHost: RouterHost) {
+class RideScreen(mapHost: MapHost, private val routerHost: RouterHost, private val files: FileHost) {
     private val map = RideMap(mapHost)
     private val settings = Prefs()
 
@@ -194,6 +196,21 @@ class RideScreen(mapHost: MapHost, private val routerHost: RouterHost) {
         UIApplication.sharedApplication.idleTimerDisabled = on
     }
 
+    /**
+     * A map pack, from Settings' picker or "Open in xnav.k" (XnavApp.swift),
+     * given back to iOS once it has been read. A route belongs to the old
+     * region's roads, so it ends.
+     */
+    fun importPack(path: String) {
+        PackImport.import(path, release = { files.releasePack(path) }) {
+            Navigator.clear()
+            cancelPin()
+            map.reloadData()
+            Router.reload()
+            PlacesStore.open()
+        }
+    }
+
     private fun offer(at: LatLon, name: String?, about: String?) {
         pin = at
         pinName = name
@@ -297,6 +314,7 @@ class RideScreen(mapHost: MapHost, private val routerHost: RouterHost) {
         val nav by Navigator.nav.collectAsState()
         val voice by Voice.state.collectAsState()
         val router by Router.state.collectAsState()
+        val pack by PackImport.state.collectAsState()
         val places by PlacesStore.state.collectAsState()
         @Suppress("UNUSED_VARIABLE") val rev = settingsRev // a change in Settings redraws the ride screen
         LaunchedEffect(nav.route) { map.showRoute(nav.route?.points) }
@@ -411,6 +429,8 @@ class RideScreen(mapHost: MapHost, private val routerHost: RouterHost) {
                     onChanged = ::applySetting,
                     onClose = { settingsOpen = false },
                     onHelp = { helpOpen = true },
+                    pack = pack,
+                    onPickPack = files::pickPack,
                 )
             }
             if (helpOpen) HelpPanel(p) { helpOpen = false }

@@ -37,6 +37,14 @@ object Router {
     private var host: RouterHost? = null
     private var open = false
 
+    /** Let go of the archive and load the one now in place (a map pack went in). */
+    fun reload() {
+        val h = host ?: return
+        dispatch_async(queue) { open = false }
+        _state.value = State(why = "loading the new map's roads")
+        load(h)
+    }
+
     /** Load the archive (once). Safe to call repeatedly. */
     fun load(host: RouterHost) {
         this.host = host

@@ -1,5 +1,7 @@
 package online.iamprettyfamous.navi.ui
 
+import online.iamprettyfamous.navi.core.pack.MapPack
+import online.iamprettyfamous.navi.data.PackImport
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -39,8 +41,8 @@ enum class Changed { THEME, AUTO_THEME, BIKE, BUILDINGS, NORTH_UP, KEEP_AWAKE, H
 /**
  * Settings on the iPhone: the Android app's panel, with only the switches this
  * build has a feature behind. A control that does nothing is a dead tap and a
- * lie about the app; the motion sensors, the rev counter, ride sync and map
- * packs arrive here with their features.
+ * lie about the app; the motion sensors, the rev counter and ride sync arrive
+ * here with their features.
  */
 @Composable
 fun SettingsPanel(
@@ -56,6 +58,8 @@ fun SettingsPanel(
     onChanged: (Changed) -> Unit,
     onClose: () -> Unit,
     onHelp: () -> Unit = {},
+    pack: PackImport.State = PackImport.State(),
+    onPickPack: () -> Unit = {},
 ) {
     Box(Modifier.fillMaxSize().background(p.bg)) {
         Column(
@@ -84,6 +88,9 @@ fun SettingsPanel(
             Choice("Buildings", p, OFF_ON, onOff(prefs.buildings)) {
                 prefs.buildings = it == "on"; onChanged(Changed.BUILDINGS)
             }
+
+            Heading("Map pack", p)
+            MapPackPanel(p, pack, onPickPack)
 
             Heading("Ride", p)
             Choice("Units", p, listOf("imperial" to "Miles · feet", "metric" to "Km · metres"),
@@ -191,6 +198,25 @@ private val CREDITS = listOf(
     "Routing: Valhalla, MIT",
     "Type: Archivo, SIL Open Font License 1.1",
 )
+
+/**
+ * The region on the phone, and a pack to replace it: the Android panel's
+ * words. The picker is Swift's (UIDocumentPicker, XnavApp.swift); a pack can
+ * also be opened straight from Files or a Safari download with "Open in
+ * xnav.k", which lands in the same import.
+ */
+@Composable
+private fun MapPackPanel(p: Palette, pack: PackImport.State, onPick: () -> Unit) {
+    Text("On this phone: ${pack.region.ifEmpty { "the map this app was built with" }}", p, size = 15, bold = true)
+    when {
+        pack.busy -> Text("Putting the map in place: %,d of %,d MB".format(pack.doneBytes / 1_000_000, pack.totalBytes / 1_000_000), p, size = 12, faint = true)
+        pack.error.isNotEmpty() -> Text(pack.error, p, size = 12)
+        else -> Text("A pack holds a region's map, its routing tiles and its searchable places - " +
+            "about 200 MB. Importing one replaces the region on this phone; your rides, " +
+            "settings and voice are untouched.", p, size = 12, faint = true)
+    }
+    Action(if (pack.busy) "Working…" else "Import a map pack (${MapPack.SUFFIX})", p) { if (!pack.busy) onPick() }
+}
 
 @Composable
 private fun Heading(text: String, p: Palette) {

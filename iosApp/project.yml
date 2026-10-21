@@ -137,6 +137,18 @@ targets:
         # Compose draws at 120 Hz only with this; without it ProMotion phones cap at 60.
         CADisableMinimumFrameDurationOnPhone: true
         UIApplicationSupportsIndirectInputEvents: true
+        # A map pack is xnav.k's own file type, so Files and Safari offer "Open
+        # in xnav.k" for a .navipack (FileHostImpl.swift reads it in place).
+        UTExportedTypeDeclarations:
+          - UTTypeIdentifier: online.iamprettyfamous.navipack
+            UTTypeDescription: xnav.k map pack
+            UTTypeConformsTo: [public.data, public.archive]
+            UTTypeTagSpecification:
+              public.filename-extension: [navipack]
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: xnav.k map pack
+            LSHandlerRank: Owner
+            LSItemContentTypes: [online.iamprettyfamous.navipack]
         # Ride logs are written to Documents; these put them in the Files app.
         UIFileSharingEnabled: true
         LSSupportsOpeningDocumentsInPlace: true

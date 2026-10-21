@@ -79,3 +79,17 @@ interface RouterHost {
         const val ERROR = "ERROR:"
     }
 }
+
+/**
+ * Files only Swift can hand over: a map pack picked in Files (the document
+ * picker) or opened with "Open in xnav.k". Swift holds the file's
+ * security-scoped access while Kotlin reads it, and the pack arrives through
+ * MainViewController.kt's OpenPack, whichever way it came.
+ */
+interface FileHost {
+    /** Show the Files picker for a map pack. */
+    fun pickPack()
+
+    /** The pack at [path] has been read to the end: give it back to iOS. */
+    fun releasePack(path: String)
+}

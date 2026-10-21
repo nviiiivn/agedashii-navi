@@ -64,6 +64,13 @@ class RideMap(private val host: MapHost) : MapEvents {
         applyTheme(theme)
     }
 
+    /** A map pack went in: read the new archive's box and zoom, and go there. */
+    fun reloadData() {
+        header = null
+        cameraSet = false
+        applyTheme(theme)
+    }
+
     fun applyTheme(key: String) {
         theme = key
         val tiles = DataFiles.tiles ?: return problem(Problem.NO_TILES)
