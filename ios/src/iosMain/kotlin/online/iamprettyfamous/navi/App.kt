@@ -23,6 +23,10 @@ import androidx.compose.ui.viewinterop.UIKitInteropInteractionMode
 import androidx.compose.ui.viewinterop.UIKitInteropProperties
 import androidx.compose.ui.viewinterop.UIKitView
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.mapNotNull
+import kotlinx.coroutines.launch
 import online.iamprettyfamous.navi.core.daylight.Daylight
 import online.iamprettyfamous.navi.core.dash.Anchor
 import online.iamprettyfamous.navi.core.dash.Hud
@@ -130,6 +134,11 @@ class RideScreen(mapHost: MapHost, private val routerHost: RouterHost) {
         val (lat, lon) = dest.split(",").mapNotNull { it.trim().toDoubleOrNull() }.takeIf { it.size == 2 } ?: return
         println("[smoke] routing to $lat,$lon")
         Navigator.go(LatLon(lat, lon), settings.imperial)
+        // The route's own line, so CI rides exactly the road it was given.
+        MainScope().launch {
+            val line = Navigator.nav.mapNotNull { it.route }.first()
+            println("[smoke-route] " + line.points.joinToString(";") { "${it.lat},${it.lon}" })
+        }
     }
 
     private fun applyVoice() {

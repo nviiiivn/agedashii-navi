@@ -195,25 +195,36 @@ jobs:
           xcrun simctl bootstatus "$udid" -b > /dev/null
           xcrun simctl install "$udid" "$app"
           xcrun simctl privacy "$udid" grant location-always "$id" || xcrun simctl privacy "$udid" grant location "$id"
-          # A ride: parked at City Hall for 15 s while the route to Broadway and
-          # 40th is worked out, then up Broadway at 25 mph, one fix a second, as
-          # a GPS gives them. Screens at 40 s and 90 s into the ride.
+          # A ride: parked at City Hall while the route to Broadway and 40th is
+          # worked out, then along that route's own line at 25 mph, one fix a
+          # second, as a GPS gives them. Screens at 40, 90 and 180 s in.
           xcrun simctl location "$udid" set 37.8044,-122.2712
           SIMCTL_CHILD_XNAV_SMOKE_DEST=37.8282,-122.2565 \
             xcrun simctl launch --console-pty --terminate-running-process "$udid" "$id" > "$out/console.txt" 2>&1 &
-          sleep 15
-          python3 - > "$RUNNER_TEMP/ride.txt" <<'PY2'
-          import math
-          way = [(37.8044, -122.2712), (37.8085, -122.2691), (37.8154, -122.2655), (37.8235, -122.2612), (37.8282, -122.2565)]
-          for (a, b), (c, d) in zip(way, way[1:]):
-              m = math.hypot((c - a) * 111320, (d - b) * 111320 * math.cos(math.radians(a)))
-              n = max(1, round(m / 11.2))
-              for k in range(n):
-                  print(f"{a + (c - a) * k / n:.6f},{b + (d - b) * k / n:.6f}")
-          PY2
+          for i in $(seq 60); do grep -q '^\[smoke-route\]' "$out/console.txt" && break; sleep 1; done
+          grep -m1 '^\[smoke-route\]' "$out/console.txt" | python3 -c '
+          import math, sys
+          line = sys.stdin.read().split(" ", 1)[1].strip()
+          pts = [tuple(map(float, p.split(","))) for p in line.split(";")]
+          def metres(a, b):
+              return math.hypot((b[0] - a[0]) * 111320, (b[1] - a[1]) * 111320 * math.cos(math.radians(a[0])))
+          step, left = 11.2, 0.0
+          print("%.6f,%.6f" % pts[0])
+          for a, b in zip(pts, pts[1:]):
+              d = metres(a, b)
+              while left + d >= step:
+                  f = (step - left) / d
+                  a = (a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f)
+                  d -= step - left
+                  left = 0.0
+                  print("%.6f,%.6f" % a)
+              left += d
+          ' > "$RUNNER_TEMP/ride.txt" || echo "no route line from the app"
+          echo "ride: $(wc -l < "$RUNNER_TEMP/ride.txt") fixes"
           ( while read -r ll; do xcrun simctl location "$udid" set "$ll"; sleep 1; done < "$RUNNER_TEMP/ride.txt" ) &
           sleep 40; xcrun simctl io "$udid" screenshot "$out/screen-40s.png"
           sleep 50; xcrun simctl io "$udid" screenshot "$out/screen-90s.png"
+          sleep 90; xcrun simctl io "$udid" screenshot "$out/screen-180s.png"
           running=no
           xcrun simctl spawn "$udid" launchctl list | grep -q "$id" && running=yes
           for f in ~/Library/Logs/DiagnosticReports/Xnav*; do [ -e "$f" ] && cp "$f" "$out/"; done
