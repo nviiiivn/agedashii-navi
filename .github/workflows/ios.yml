@@ -127,12 +127,22 @@ jobs:
           app="$(find "$RUNNER_TEMP/Xnav.xcarchive/Products/Applications" -maxdepth 1 -name '*.app' | head -1)"
           mkdir -p "$RUNNER_TEMP/ipa/Payload"
           cp -R "$app" "$RUNNER_TEMP/ipa/Payload/"
+          # Self-signed (ad hoc): archived with signing off, the app is bare,
+          # and an installer on her phone refused that as "not signed at
+          # all" (2026-10-22). Frameworks first, then the app around them.
+          a="$RUNNER_TEMP/ipa/Payload/$(basename "$app")"
+          if [ -d "$a/Frameworks" ]; then
+            find "$a/Frameworks" -maxdepth 1 \( -name '*.framework' -o -name '*.dylib' \) -exec codesign --force --sign - --timestamp=none {} \;
+          fi
+          codesign --force --sign - --timestamp=none "$a"
           (cd "$RUNNER_TEMP/ipa" && zip -qry "$RUNNER_TEMP/xnav-k.ipa" Payload)
           python3 - "$RUNNER_TEMP/xnav-k.ipa" <<'PY'
           import os, sys, zipfile
           names = zipfile.ZipFile(sys.argv[1]).namelist()
           if not [n for n in names if n.startswith("Payload/") and n.endswith(".app/Info.plist") and n.count("/") == 2]:
               sys.exit("no app Info.plist under Payload/")
+          if not [n for n in names if n.count("/") == 3 and n.endswith(".app/_CodeSignature/CodeResources")]:
+              sys.exit("the app is not signed")
           print(f"ok: {os.path.getsize(sys.argv[1]):,} bytes, {len(names)} entries")
           PY
 
